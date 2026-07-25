@@ -1,0 +1,197 @@
+Here is your content organized in a clean interview-note format.
+
+---
+
+Note: # 1. ArrayList vs LinkedList
+
+Frequent insertions/deletions occur at the beginning or ends of the list. LinkedList
+
+for end ArrayList is good.
+
+Remaining any synarios ArrayList is better compare to LinkedList.
+
+-------------------------
+
+# CopyOnWriteArrayList – Key Interview Notes
+
+## 1. Why is CopyOnWriteArrayList thread-safe?
+
+### Answer
+
+`CopyOnWriteArrayList` is thread-safe because:
+
+* All **write operations** (`add()`, `remove()`, `set()`) are protected by a **ReentrantLock**.
+* Every write operation creates a **completely new copy of the underlying array**.
+* Readers always read from an **immutable snapshot** of the array.
+* Readers and writers **never operate on the same array instance**.
+* Only **writers acquire locks**.
+* **Readers never acquire locks**, so multiple threads can read simultaneously.
+* Iterators also work on a **snapshot** of the array.
+
+---
+
+## 2. What is meant by Concurrent Reads?
+
+Multiple threads can read the collection at the same time.
+
+```
+Thread-1 ---> Read
+Thread-2 ---> Read
+Thread-3 ---> Read
+Thread-4 ---> Read
+```
+
+* No locking
+* No waiting
+* Very fast
+
+---
+
+## 3. What is meant by Concurrent Writes?
+
+Multiple threads can try to modify the collection simultaneously.
+
+```
+Thread-1 ---> add()
+
+Thread-2 ---> remove()
+
+Thread-3 ---> set()
+```
+
+Only **one writer** can modify the collection at a time because of the **ReentrantLock**.
+
+---
+
+## 4. Why do readers never see partial updates?
+
+Because readers always access a **snapshot** of the array.
+
+Example:
+
+```
+Current Array
+
+[India, USA, UK]
+
+↓
+
+Thread-1 starts iteration
+
+↓
+
+Thread-2 adds Japan
+
+↓
+
+New Array
+
+[India, USA, UK, Japan]
+
+↓
+
+Thread-1 still reads
+
+[India, USA, UK]
+```
+
+Readers continue reading the old snapshot safely until they finish.
+
+---
+
+## 5. Does CopyOnWriteArrayList lock readers?
+
+**No.**
+
+Readers:
+
+* Read directly from the current snapshot.
+* Never acquire locks.
+* Can execute concurrently.
+
+Only writers acquire locks.
+
+---
+
+## 6. How does iteration work?
+
+Iteration uses a **snapshot** of the array.
+
+Therefore:
+
+* No `ConcurrentModificationException`
+* Iterator doesn't see newly added elements.
+* Safe concurrent iteration.
+
+---
+
+## 7. Which collection performs better with 10 million records?
+
+### Read-heavy workload
+
+✅ **CopyOnWriteArrayList**
+
+**Reason**
+
+* Lock-free reads
+* Snapshot iteration
+* Multiple readers can access simultaneously
+* Excellent for read-heavy systems
+
+---
+
+### Write-heavy workload
+
+✅ **ArrayList**
+
+**Reason**
+
+* No array copying
+* Lower CPU overhead
+* Lower memory overhead
+* Much faster insert, update and delete operations
+
+---
+
+## 8. Real-world use of CopyOnWriteArrayList
+
+Use when data is:
+
+* Read thousands of times
+* Updated only occasionally
+
+Examples
+
+* Application configuration
+* Country list
+* Currency list
+* Feature flags
+* Supported languages
+* Holiday calendars
+* Reference/master data
+
+---
+
+# Overall Comparison
+
+| Feature                      | ArrayList                                     | CopyOnWriteArrayList                               |
+| ---------------------------- | --------------------------------------------- | -------------------------------------------------- |
+| Read                         | ✅ Very Fast                                   | ✅ Very Fast                                        |
+| Insert                       | ✅ Fast                                        | ❌ Slow (copies entire array)                       |
+| Update                       | ✅ Fast                                        | ❌ Slow (copies entire array)                       |
+| Delete                       | ✅ Fast                                        | ❌ Slow (copies entire array)                       |
+| Memory Usage                 | ✅ Low                                         | ❌ High during writes                               |
+| Thread Safety                | ❌ No                                          | ✅ Yes                                              |
+| Concurrent Reads             | ❌ Not thread-safe                             | ✅ Yes (lock-free)                                  |
+| Concurrent Writes            | ❌ Not thread-safe                             | ✅ Yes (one writer at a time using `ReentrantLock`) |
+| Iteration                    | Fail-fast (`ConcurrentModificationException`) | Snapshot iteration (safe)                          |
+| Reader Sees Partial Updates  | ❌ Not safe                                    | ✅ Never                                            |
+| Best for Millions of Records | ✅ Write-heavy workloads                       | ✅ Read-heavy workloads                             |
+| Best Use Case                | Frequent insert/update/delete                 | Frequent reads, rare writes                        |
+
+---
+
+## Interview One-Line Summary
+
+* **ArrayList** → Choose when **insert, update, and delete operations are frequent** and thread safety is not required.
+* **CopyOnWriteArrayList** → Choose when **multiple threads read the data frequently, updates are rare, and thread-safe, lock-free reads are important**. It achieves this by creating a new array on every write and allowing readers to work on immutable snapshots.

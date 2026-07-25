@@ -1,0 +1,352 @@
+Great question. **Runtime Data Areas** are one of the most important JVM interview topics.
+
+## What is Runtime Data Areas?
+
+**Definition:**
+
+> **Runtime Data Areas are memory areas created by the JVM to store all the data needed while a Java program is executing.**
+
+When you run:
+
+```bash
+java Test
+```
+
+the JVM starts and allocates several memory regions. These memory regions are collectively called **Runtime Data Areas**.
+
+---
+
+## JVM Architecture
+
+```text
+                 JVM
+┌─────────────────────────────────────┐
+│ Class Loader                        │
+│ Bytecode Verifier                   │
+│ Runtime Data Areas   ← Memory       │
+│ Execution Engine                    │
+│   ├── Interpreter                   │
+│   └── JIT Compiler                  │
+└─────────────────────────────────────┘
+```
+
+The **Runtime Data Areas** are simply the memory used by the JVM.
+
+---
+
+# Types of Runtime Data Areas
+
+There are **5 main runtime data areas**.
+
+```text
+Runtime Data Areas
+│
+├── Method Area
+├── Heap
+├── Java Stack
+├── PC Register
+└── Native Method Stack
+```
+
+Let's understand each one.
+
+---
+
+# 1. Method Area (Shared)
+
+Stores:
+
+* Class metadata
+* Method information
+* Static variables
+* Runtime constant pool
+
+Example
+
+```java
+class Employee {
+
+    static int count = 0;
+
+    void display() {
+
+    }
+}
+```
+
+Method Area stores
+
+```text
+Employee.class metadata
+
+Method:
+display()
+
+Static variable:
+count
+
+Constant Pool
+```
+
+There is **only one Method Area** for the entire JVM.
+
+---
+
+# 2. Heap (Shared)
+
+Stores **objects**.
+
+Example
+
+```java
+Employee emp = new Employee();
+```
+
+Memory
+
+```text
+Stack                    Heap
+
+emp ------------------> Employee Object
+```
+
+Every object created using
+
+```java
+new
+```
+
+is stored in the Heap.
+
+Examples
+
+```java
+new String()
+
+new ArrayList()
+
+new HashMap()
+
+new Employee()
+```
+
+All are stored in Heap memory.
+
+---
+
+# 3. Java Stack (One per Thread)
+
+Every thread has its own stack.
+
+Stores
+
+* Local variables
+* Method calls
+* Parameters
+
+Example
+
+```java
+public void add() {
+
+    int x = 10;
+    int y = 20;
+}
+```
+
+Stack Frame
+
+```text
+add()
+
+x = 10
+
+y = 20
+```
+
+When the method finishes,
+
+the stack frame is removed.
+
+---
+
+# 4. PC Register (Program Counter)
+
+Every thread has one PC Register.
+
+It stores
+
+> Which bytecode instruction is currently being executed.
+
+Example
+
+```java
+System.out.println("A");
+
+System.out.println("B");
+
+System.out.println("C");
+```
+
+PC Register
+
+```text
+Current Instruction
+
+↓
+
+println("B")
+```
+
+After finishing
+
+```text
+println("B")
+```
+
+it moves to
+
+```text
+println("C")
+```
+
+---
+
+# 5. Native Method Stack
+
+Stores information required for native methods.
+
+Example
+
+```java
+System.loadLibrary("abc");
+```
+
+or
+
+```java
+public native void display();
+```
+
+When Java calls C/C++ code,
+
+Native Method Stack is used.
+
+---
+
+# Complete Example
+
+```java
+class Employee {
+
+    static int count = 0;
+
+    int id;
+
+    Employee(int id) {
+        this.id = id;
+    }
+
+    public static void main(String args[]) {
+
+        Employee e = new Employee(101);
+    }
+}
+```
+
+Memory
+
+```text
+                 JVM Runtime Data Areas
+
+        ┌────────────────────────────────┐
+        │ Method Area                    │
+        │------------------------------- │
+        │ Employee.class                 │
+        │ Constructor                    │
+        │ main()                         │
+        │ static count                   │
+        └────────────────────────────────┘
+
+
+        ┌────────────────────────────────┐
+        │ Heap                           │
+        │------------------------------- │
+        │ Employee Object                │
+        │ id = 101                       │
+        └────────────────────────────────┘
+
+
+        ┌────────────────────────────────┐
+        │ Java Stack                     │
+        │------------------------------- │
+        │ main() Frame                   │
+        │ e --------------┐              │
+        └─────────────────│──────────────┘
+                          │
+                          ▼
+
+
+        ┌────────────────────────────────┐
+        │ PC Register                    │
+        │ Current Bytecode Instruction   │
+        └────────────────────────────────┘
+
+
+        ┌────────────────────────────────┐
+        │ Native Method Stack            │
+        │ Native Calls                   │
+        └────────────────────────────────┘
+```
+
+---
+
+# How it fits into the JVM flow
+
+```text
+Java Source (.java)
+        │
+        ▼
+javac
+        │
+        ▼
+.class (Bytecode)
+        │
+        ▼
+Class Loader
+        │
+        ▼
+Bytecode Verifier
+        │
+        ▼
+Runtime Data Areas
+        │
+        │  Method Area → Class metadata
+        │  Heap → Objects
+        │  Stack → Method frames
+        │  PC Register → Current instruction
+        │  Native Method Stack → Native methods
+        ▼
+Execution Engine
+        │
+        ├── Interpreter
+        └── JIT Compiler
+        ▼
+Machine Code
+        ▼
+CPU
+```
+
+### Easy way to remember
+
+| Runtime Data Area       | Stores                                                   | Shared?               |
+| ----------------------- | -------------------------------------------------------- | --------------------- |
+| **Method Area**         | Class metadata, methods, static variables, constant pool | ✅ Yes                 |
+| **Heap**                | Objects and arrays                                       | ✅ Yes                 |
+| **Java Stack**          | Method frames, local variables, parameters               | ❌ No (one per thread) |
+| **PC Register**         | Address of the current bytecode instruction              | ❌ No (one per thread) |
+| **Native Method Stack** | Information for native (C/C++) method execution          | ❌ No (one per thread) |
+
+**Interview definition:**
+
+> **Runtime Data Areas are the memory regions created by the JVM at runtime to store class metadata, objects, method execution data, and thread-specific execution information while a Java application is running.**

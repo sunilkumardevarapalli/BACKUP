@@ -1,0 +1,255 @@
+This is a very common interview question. Let's clarify **where static fields, instance fields, and local variables are created** during the class loading phases.
+
+Your uploaded notes mention the Linking phases but don't explain where different types of variables are stored. The explanation below expands on those notes. 
+
+---
+
+# Example
+
+```java
+class Employee {
+
+    static int companyId = 100;   // Static field
+
+    int empId = 10;               // Instance field
+
+    public void display() {
+        int salary = 50000;       // Local variable
+    }
+}
+```
+
+---
+
+# 1. Verification
+
+**Purpose:**
+
+* Checks whether the bytecode is valid.
+* No memory is allocated for variables.
+
+```text
+.class File
+     │
+     ▼
+Verification
+     │
+     └── Check bytecode correctness
+```
+
+---
+
+# 2. Preparation
+
+During the **Preparation** phase:
+
+* Memory is allocated **only for static fields**.
+* They are assigned **default values**, **not** the values in the code.
+
+Example:
+
+```java
+static int companyId = 100;
+```
+
+After **Preparation**:
+
+```text
+Metaspace
+
+Employee Class Metadata
+
+companyId = 0
+```
+
+The value `100` is **not assigned yet**.
+
+### Default Values
+
+| Type    | Default Value |
+| ------- | ------------- |
+| int     | 0             |
+| long    | 0L            |
+| boolean | false         |
+| Object  | null          |
+| double  | 0.0           |
+
+---
+
+# 3. Resolution
+
+During Resolution:
+
+No variables are created.
+
+The JVM resolves symbolic references.
+
+Example:
+
+```java
+Employee emp = new Employee();
+emp.display();
+```
+
+It resolves:
+
+```text
+Employee  → Class Metadata
+
+display() → Method Metadata
+
+companyId → Static Field Metadata
+```
+
+It only finds where these members exist.
+
+---
+
+# 4. Initialization
+
+Now the actual static initialization happens.
+
+```java
+static int companyId = 100;
+
+static {
+    System.out.println("Init");
+}
+```
+
+After Initialization:
+
+```text
+Metaspace
+
+Employee
+
+companyId = 100
+```
+
+The static block is executed.
+
+---
+
+# When are Instance Fields Created?
+
+```java
+Employee emp = new Employee();
+```
+
+This is **not** during class loading.
+
+It happens **at runtime** when the object is created.
+
+Memory is allocated on the **Heap**.
+
+```text
+Heap
+
+Employee Object
+
+empId = 10
+```
+
+---
+
+# When are Local Variables Created?
+
+```java
+public void display() {
+
+    int salary = 50000;
+
+}
+```
+
+Local variables are created **when the method is invoked**.
+
+They are stored in the **Java Stack**.
+
+---
+
+# Complete Memory Flow
+
+```text
+Class Loading
+
+Loading
+    │
+    ▼
+Class Metadata created
+(Metaspace)
+
+        │
+        ▼
+Verification
+        │
+        ▼
+Preparation
+        │
+        └── Static fields created
+             Default values assigned
+
+             companyId = 0
+
+        │
+        ▼
+Resolution
+        │
+        └── Resolve class, methods,
+            fields, constructors
+
+        │
+        ▼
+Initialization
+        │
+        └── Static values assigned
+
+             companyId = 100
+
+------------------------------------
+
+Runtime
+
+new Employee()
+
+        │
+        ▼
+Heap
+
+Employee Object
+
+empId = 10
+
+------------------------------------
+
+display()
+
+        │
+        ▼
+Java Stack
+
+salary = 50000
+```
+
+---
+
+# Interview Summary
+
+| Phase                       | What Happens                                                                 |
+| --------------------------- | ---------------------------------------------------------------------------- |
+| **Loading**                 | Creates class metadata (`Class` object) in Metaspace.                        |
+| **Verification**            | Verifies bytecode. No variables are created.                                 |
+| **Preparation**             | Allocates memory for **static fields** and assigns **default values**.       |
+| **Resolution**              | Resolves symbolic references to direct references. No variables are created. |
+| **Initialization**          | Assigns actual values to static fields and executes static blocks.           |
+| **Object Creation (`new`)** | Creates **instance fields** in the Heap.                                     |
+| **Method Call**             | Creates **local variables** in the Java Stack.                               |
+
+### Key Point
+
+If you meant **"primary fields"** as **primitive/static fields**:
+
+* **Static primitive fields** (`static int x`) are allocated during **Preparation** with default values and receive their actual values during **Initialization**.
+* **Instance primitive fields** (`int x`) are created only when an object is instantiated with `new`, and they live in the **Heap**.
+* **Local primitive variables** (inside methods) are created when the method executes and live in the **Java Stack**.

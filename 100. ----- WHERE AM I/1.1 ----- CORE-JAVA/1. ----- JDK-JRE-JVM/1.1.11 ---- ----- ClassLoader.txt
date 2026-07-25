@@ -1,0 +1,399 @@
+Good catch. Your notes are missing the **three major phases of Class Loading**. These are fundamental interview topics and should appear before the class loading errors. The uploaded notes discuss `defineClass()` and class loaders but do not include a dedicated explanation of **Loading → Linking → Initialization**. 
+
+You can add the following section:
+
+---
+
+# 3. Class Loading Phases
+
+When the JVM loads a class, it goes through **three main phases**:
+
+```text
+.class File
+     │
+     ▼
+1. Loading
+     │
+     ▼
+2. Linking
+   ├── Verification
+   ├── Preparation
+   └── Resolution
+     │
+     ▼
+3. Initialization
+     │
+     ▼
+Class Ready to Use
+```
+
+---
+
+## 1. Loading
+
+**Purpose:**
+
+* Reads the `.class` file.
+* Creates a `Class` object in the JVM.
+* Stores class metadata in **Metaspace**.
+
+**Performed by:**
+
+* Bootstrap ClassLoader
+* Platform ClassLoader
+* Application ClassLoader
+* Custom ClassLoader
+
+**Important Method**
+
+```java
+loadClass()
+findClass()
+defineClass()
+```
+
+`defineClass()` converts the bytecode into a `Class` object.
+
+---
+
+## 2. Linking
+
+The JVM verifies and prepares the loaded class before it can be executed.
+
+### (a) Verification
+
+Checks whether the bytecode is valid and secure.
+
+If verification fails:
+
+```text
+VerifyError
+```
+
+---
+
+### (b) Preparation
+
+* Allocates memory for **static variables**.
+* Assigns **default values**.
+
+Example:
+
+```java
+class Employee {
+    static int age = 25;
+}
+```
+
+During **Preparation**:
+
+```java
+age = 0
+```
+
+The value `25` is **not assigned yet**.
+
+---
+
+### (c) Resolution
+
+Replaces symbolic references with direct memory references.
+
+Example:
+
+```java
+Employee emp = new Employee();
+```
+
+The JVM resolves references to the `Employee` class, methods, and fields.
+
+---
+
+## 3. Initialization
+
+Executes:
+
+* Static variable assignments
+* Static blocks
+
+Example:
+
+```java
+class Employee {
+
+    static int age = 25;
+
+    static {
+        System.out.println("Static Block");
+    }
+}
+```
+
+During Initialization:
+
+```text
+age = 25
+Static Block Executed
+```
+
+If a static block throws an exception:
+
+```text
+ExceptionInInitializerError
+```
+
+---
+
+# Complete Flow
+
+```text
+Employee.class
+      │
+      ▼
+Loading
+   │
+   ├── Read bytecode
+   ├── Create Class object
+   └── Store metadata in Metaspace
+      │
+      ▼
+Linking
+   │
+   ├── Verification
+   ├── Preparation
+   └── Resolution
+      │
+      ▼
+Initialization
+   │
+   ├── Static variables initialized
+   ├── Static blocks executed
+   └── Class ready for use
+```
+
+---
+
+# Interview Summary
+
+| Phase                      | What Happens                                                               |
+| -------------------------- | -------------------------------------------------------------------------- |
+| **Loading**                | Reads `.class` file, creates `Class` object, stores metadata in Metaspace. |
+| **Linking - Verification** | Validates bytecode (`VerifyError` if invalid).                             |
+| **Linking - Preparation**  | Allocates memory for static variables and assigns default values.          |
+| **Linking - Resolution**   | Converts symbolic references into direct references.                       |
+| **Initialization**         | Executes static variable assignments and static blocks.                    |
+
+### Interview Answer (30 seconds)
+
+> **Class loading has three phases: Loading, Linking, and Initialization. During Loading, the JVM reads the `.class` file and creates a `Class` object. During Linking, it verifies the bytecode, allocates memory for static variables with default values, and resolves symbolic references. Finally, during Initialization, static variables receive their actual values, static blocks execute, and the class becomes ready for use.**
+
+This section fits naturally **before "Common Class Loading Errors"** in your notes because the loading errors (`VerifyError`, `ExceptionInInitializerError`, etc.) occur during these phases.
+
+
+This point often confuses people because **Resolution does not mean creating the object**. It means **converting symbolic references into direct references**.
+
+Let's understand it step by step.
+
+---
+
+# During Compilation
+
+Suppose you write:
+
+```java
+Employee emp = new Employee();
+emp.display();
+```
+
+After compilation, the bytecode **does not contain actual memory addresses**.
+
+Instead, it stores **symbolic references** in the constant pool.
+
+Example (simplified):
+
+```text
+Class: Employee
+Method: display()
+Constructor: Employee()
+```
+
+These are just **names**, not memory addresses.
+
+---
+
+# During Resolution (Linking Phase)
+
+The JVM looks at the symbolic reference:
+
+```text
+Employee
+```
+
+and searches for the actual loaded class.
+
+If found, it replaces it with a **direct reference** to the class metadata stored in Metaspace.
+
+Similarly,
+
+```text
+display()
+```
+
+is replaced with the actual method information.
+
+After resolution:
+
+```text
+Employee  --->  Class Metadata in Metaspace
+
+display() ---> Method Entry
+
+age       ---> Field Offset
+```
+
+This process is called **Resolution**.
+
+---
+
+# What is a Symbolic Reference?
+
+A symbolic reference is simply a **name**.
+
+Example:
+
+```text
+Employee
+display()
+salary
+```
+
+The JVM still doesn't know where these exist in memory.
+
+---
+
+# What is a Direct Reference?
+
+After resolution:
+
+```text
+Employee
+      │
+      ▼
+Metaspace
++----------------------+
+| Employee Class       |
+| display()            |
+| salary               |
++----------------------+
+```
+
+The JVM now knows the exact location of the class, methods, and fields.
+
+---
+
+# Example
+
+```java
+class Employee {
+
+    void display() {
+        System.out.println("Hello");
+    }
+}
+
+public class Test {
+
+    public static void main(String[] args) {
+
+        Employee emp = new Employee();
+
+        emp.display();
+
+    }
+}
+```
+
+During Resolution, the JVM resolves:
+
+* `Employee` → Employee class metadata
+* `Employee()` → Constructor
+* `display()` → Method
+* Any accessed fields → Field metadata
+
+Only after these references are resolved can the JVM execute the bytecode efficiently.
+
+---
+
+# Important Clarification
+
+Many people think this line:
+
+```java
+Employee emp = new Employee();
+```
+
+is executed during the **Resolution** phase.
+
+**That's not correct.**
+
+Resolution **does not execute the code** or create the object.
+
+Object creation happens **later**, when this bytecode is executed:
+
+```text
+new Employee
+```
+
+At runtime, the JVM:
+
+1. Allocates memory on the Heap.
+2. Calls the constructor.
+3. Returns the object reference.
+
+Resolution simply ensures that the symbolic references (`Employee`, constructor, methods, fields) are translated into direct references before or during execution.
+
+---
+
+# Visual Flow
+
+```text
+Compilation
+----------------
+Employee
+display()
+salary
+      │
+      ▼
+Constant Pool
+(Symbolic References)
+
+             JVM Starts
+
+Loading
+   │
+   ▼
+Linking
+   │
+   ├── Verification
+   ├── Preparation
+   └── Resolution
+          │
+          ▼
+Employee  ─────────► Employee Class Metadata
+display() ─────────► Method Metadata
+salary    ─────────► Field Metadata
+          │
+          ▼
+Initialization
+          │
+          ▼
+Runtime Execution
+          │
+          ▼
+new Employee()
+(Heap object created)
+```
+
+### Interview Answer
+
+> **Resolution is the third step of the Linking phase. During Resolution, the JVM replaces symbolic references stored in the constant pool (such as class names, method names, and field names) with direct references to their corresponding runtime metadata. It does not create objects or execute methods; it only resolves where those classes, methods, and fields are located so they can be accessed efficiently during execution.**

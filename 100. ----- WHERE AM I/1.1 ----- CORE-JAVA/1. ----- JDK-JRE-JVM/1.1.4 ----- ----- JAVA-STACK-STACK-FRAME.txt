@@ -1,0 +1,338 @@
+Excellent question. There's one small misconception:
+
+> **A Java Stack is created per thread, NOT per method.**
+
+Let's clarify.
+
+---
+
+## One Thread = One Java Stack
+
+Suppose your program starts with only the main thread.
+
+```text
+Main Thread
+     │
+     ▼
+Java Stack
+```
+
+There is **only one Java Stack** for the `main` thread.
+
+---
+
+## Methods create Stack Frames, not Stacks
+
+Consider this class:
+
+```java
+public class Test {
+
+    public void m1() {}
+
+    public void m2() {}
+
+    public void m3() {}
+
+    public void m4() {}
+
+    public void m5() {}
+
+    public static void main(String[] args) {
+
+    }
+}
+```
+
+This class has **6 methods**.
+
+**Question:** Are 6 Java Stacks created?
+
+**Answer:** ❌ No.
+
+Only **one Java Stack** is created for the main thread.
+
+Initially:
+
+```text
+Main Thread
+
+Java Stack
+
++------------------+
+| main() Frame     |
++------------------+
+```
+
+---
+
+## When `main()` calls another method
+
+```java
+public class Test {
+
+    public static void main(String[] args) {
+
+        m1();
+    }
+
+    static void m1() {
+
+    }
+}
+```
+
+Execution:
+
+### Step 1
+
+```text
+Java Stack
+
++------------------+
+| main()           |
++------------------+
+```
+
+### Step 2
+
+`main()` calls `m1()`.
+
+A new **Stack Frame** is pushed.
+
+```text
+Java Stack
+
++------------------+
+| m1()             | ← Top
++------------------+
+| main()           |
++------------------+
+```
+
+---
+
+### Step 3
+
+`m1()` finishes.
+
+Its frame is removed.
+
+```text
+Java Stack
+
++------------------+
+| main()           |
++------------------+
+```
+
+---
+
+## More Example
+
+```java
+public class Test {
+
+    static void m1() {
+
+        m2();
+    }
+
+    static void m2() {
+
+        m3();
+    }
+
+    static void m3() {
+
+    }
+
+    public static void main(String[] args) {
+
+        m1();
+    }
+}
+```
+
+Execution:
+
+### Initially
+
+```text
+Java Stack
+
++----------------+
+| main()         |
++----------------+
+```
+
+---
+
+### main() → m1()
+
+```text
+Java Stack
+
++----------------+
+| m1()           |
++----------------+
+| main()         |
++----------------+
+```
+
+---
+
+### m1() → m2()
+
+```text
+Java Stack
+
++----------------+
+| m2()           |
++----------------+
+| m1()           |
++----------------+
+| main()         |
++----------------+
+```
+
+---
+
+### m2() → m3()
+
+```text
+Java Stack
+
++----------------+
+| m3()           |
++----------------+
+| m2()           |
++----------------+
+| m1()           |
++----------------+
+| main()         |
++----------------+
+```
+
+---
+
+Then methods return one by one.
+
+```text
+m3() removed
+
+m2() removed
+
+m1() removed
+
+main() removed
+```
+
+---
+
+## What if a class has 10 methods?
+
+```java
+class Employee {
+
+    void m1(){}
+
+    void m2(){}
+
+    void m3(){}
+
+    ...
+
+    void m10(){}
+}
+```
+
+Suppose only this is executed:
+
+```java
+public static void main(String[] args) {
+
+    m1();
+
+    m2();
+}
+```
+
+Only these methods execute.
+
+So only these frames are created.
+
+```text
+main()
+
+↓
+
+m1()
+
+↓
+
+m2()
+```
+
+Methods `m3()` to `m10()` are **never called**, so **no stack frames are created for them**.
+
+---
+
+## Your statement
+
+> **"If class have 10 methods, 10 stacks will be created?"**
+
+❌ Incorrect.
+
+✅ Correct statement:
+
+> **If a class has 10 methods, no stack frames are created initially. A stack frame is created only when a method is actually invoked.**
+
+---
+
+## Thread vs Stack vs Stack Frame
+
+```text
+Main Thread
+     │
+     ▼
+Java Stack (only one)
+     │
+     ├── main() Frame
+     ├── m1() Frame
+     ├── m2() Frame
+     └── m3() Frame
+```
+
+If another thread starts:
+
+```java
+new Thread(...).start();
+```
+
+Then:
+
+```text
+Main Thread
+     │
+     ▼
+Java Stack
+     ├── main()
+     ├── m1()
+
+Worker Thread
+     │
+     ▼
+Java Stack
+     ├── run()
+     ├── process()
+```
+
+Each thread has **its own Java Stack**, and each stack contains **stack frames** for the methods currently executing in that thread.
+
+### Interview Definition
+
+* **Java Stack:** One per thread, created when the thread starts.
+* **Stack Frame:** One per method invocation, created when the method is called and removed when the method returns.
+
+This distinction between a **stack** and a **stack frame** is a very common Java interview question.

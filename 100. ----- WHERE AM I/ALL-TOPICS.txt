@@ -1,0 +1,43 @@
+
+
+1.1 Java Life cycle
+
+	1.2 OOPS Concepts
+	
+	1.3 Design Patterens
+	
+	1.4 Complitable Feature
+	
+	1.5 Collections
+	
+	1.6 Java 8 and 17 and 21 Features
+
+	1.7 Threading
+	
+	1.8 Programming
+	
+	Set-1
+		
+2. Spring Data JPA
+
+3. Tansactions
+
+4. Kafka
+
+5. Spring Batch
+
+6. Spring Boot
+
+7. Micro-servises
+
+8. SQL
+
+9. Spring AI
+
+	Data base AI
+	
+	Ai project
+	
+
+
+

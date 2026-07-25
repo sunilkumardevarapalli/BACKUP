@@ -1,0 +1,287 @@
+This is one of the most frequently asked Java interview questions.
+
+# ConcurrentHashMap vs HashMap
+
+| Feature          | HashMap                | ConcurrentHashMap                      |
+| ---------------- | ---------------------- | -------------------------------------- |
+| Thread-safe      | ❌ No                   | ✅ Yes                                  |
+| Multiple threads | Unsafe                 | Safe                                   |
+| Performance      | Faster (single thread) | Slightly slower due to synchronization |
+| Null Key         | ✅ One allowed          | ❌ Not allowed                          |
+| Null Value       | ✅ Multiple allowed     | ❌ Not allowed                          |
+| Iterator         | Fail-Fast              | Weakly Consistent                      |
+
+---
+
+# 1. HashMap
+
+### Characteristics
+
+* Not thread-safe.
+* Best for single-threaded applications.
+* Very fast because there is no synchronization.
+
+### Example
+
+```java
+Map<Integer, String> map = new HashMap<>();
+
+map.put(1, "Java");
+map.put(2, "Spring");
+
+System.out.println(map.get(1));
+```
+
+---
+
+# Problem with Multiple Threads
+
+Suppose two threads update the same map.
+
+```java
+HashMap<Integer, String> map = new HashMap<>();
+
+Thread t1 = new Thread(() -> map.put(1, "Java"));
+Thread t2 = new Thread(() -> map.put(1, "Spring"));
+
+t1.start();
+t2.start();
+```
+
+Possible problems:
+
+* Data corruption
+* Lost updates
+* Inconsistent data
+
+Because `HashMap` does **not** synchronize access.
+
+---
+
+# 2. ConcurrentHashMap
+
+### Characteristics
+
+* Thread-safe.
+* Designed for concurrent applications.
+* Multiple threads can read and write safely.
+
+```java
+Map<Integer, String> map = new ConcurrentHashMap<>();
+
+map.put(1, "Java");
+map.put(2, "Spring");
+```
+
+Even if many threads access the map simultaneously, it remains consistent.
+
+---
+
+# Example
+
+```java
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class Demo {
+
+    public static void main(String[] args) {
+
+        Map<Integer, String> map = new ConcurrentHashMap<>();
+
+        Thread t1 = new Thread(() -> map.put(1, "Java"));
+        Thread t2 = new Thread(() -> map.put(2, "Spring"));
+
+        t1.start();
+        t2.start();
+    }
+}
+```
+
+This executes safely because `ConcurrentHashMap` handles synchronization internally.
+
+---
+
+# How does ConcurrentHashMap achieve thread safety?
+
+### HashMap
+
+```text
+Thread 1
+     │
+     ▼
+HashMap
+     ▲
+     │
+Thread 2
+
+❌ No synchronization
+```
+
+---
+
+### ConcurrentHashMap
+
+```text
+Thread 1
+     │
+     ▼
+ConcurrentHashMap
+     ▲
+     │
+Thread 2
+
+✅ Safe concurrent access
+```
+
+Internally, `ConcurrentHashMap` allows multiple threads to operate concurrently on different parts of the map, rather than locking the entire map for every operation.
+
+---
+
+# Null Handling
+
+### HashMap
+
+```java
+Map<Integer, String> map = new HashMap<>();
+
+map.put(null, "Java");
+map.put(1, null);
+```
+
+Valid.
+
+---
+
+### ConcurrentHashMap
+
+```java
+Map<Integer, String> map = new ConcurrentHashMap<>();
+
+map.put(null, "Java");   // Exception
+```
+
+Throws:
+
+```text
+NullPointerException
+```
+
+It also doesn't allow `null` values.
+
+---
+
+# Iterator Difference
+
+### HashMap
+
+```java
+for(Integer key : map.keySet()){
+    map.put(5,"New");
+}
+```
+
+Throws:
+
+```text
+ConcurrentModificationException
+```
+
+This is called a **fail-fast** iterator.
+
+---
+
+### ConcurrentHashMap
+
+```java
+for(Integer key : map.keySet()){
+    map.put(5,"New");
+}
+```
+
+No exception.
+
+The iterator is **weakly consistent**:
+
+* It doesn't throw `ConcurrentModificationException`.
+* It may or may not reflect updates made during iteration.
+
+---
+
+# Real-Time Example
+
+### HashMap
+
+Used for:
+
+* Student records in a standalone application.
+* Configuration loaded once at startup.
+* Local caches used by a single thread.
+
+---
+
+### ConcurrentHashMap
+
+Used for:
+
+* Session storage.
+* User cache.
+* Product cache.
+* API rate limiting.
+* Shared application state in Spring Boot.
+
+Example:
+
+```java
+ConcurrentHashMap<String, UserSession> sessions =
+        new ConcurrentHashMap<>();
+```
+
+Multiple users can log in simultaneously without corrupting the map.
+
+---
+
+# When to use which?
+
+### Use `HashMap`
+
+* Single-threaded applications.
+* No concurrent access.
+* Maximum performance.
+
+### Use `ConcurrentHashMap`
+
+* Multiple threads access the map.
+* Spring Boot applications.
+* Microservices.
+* Shared caches.
+* Session management.
+
+---
+
+# Interview Answer (30 seconds)
+
+> **`HashMap` is not thread-safe and is suitable for single-threaded applications. `ConcurrentHashMap` is thread-safe and designed for concurrent access by multiple threads. It allows high concurrency by synchronizing only the necessary portions of the map rather than locking the entire map. Unlike `HashMap`, it does not allow `null` keys or values, and its iterators are weakly consistent instead of fail-fast.**
+
+## Memory Trick
+
+```text
+HashMap
+--------
+Single Thread
+Fast
+Allows null
+Fail-Fast
+
+ConcurrentHashMap
+-----------------
+Multiple Threads
+Thread-Safe
+No null
+Weakly Consistent
+```
+
+### One-line Rule
+
+* **`HashMap`** → Fast, but **not safe for concurrent access**.
+* **`ConcurrentHashMap`** → Slightly more overhead, but **safe for concurrent access**.

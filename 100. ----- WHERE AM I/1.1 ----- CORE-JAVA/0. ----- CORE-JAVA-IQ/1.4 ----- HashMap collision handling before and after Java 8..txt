@@ -1,0 +1,306 @@
+This is another popular Java interview question.
+
+# What is a HashMap Collision?
+
+A **collision** occurs when **two different keys produce the same hash bucket**.
+
+Example:
+
+```text
+Key1 → Bucket 5
+Key2 → Bucket 5
+```
+
+Both keys end up in the same bucket.
+
+---
+
+# 1. Collision Handling Before Java 8 (Java 7 and Earlier)
+
+Before Java 8, **each bucket was implemented as a LinkedList**.
+
+When multiple keys mapped to the same bucket:
+
+* The first entry became the head node.
+* New entries were added to the linked list.
+* During lookup, the list was traversed sequentially.
+
+### Structure
+
+```text
+Bucket 5
+   │
+   ▼
+[101, Java]
+      │
+      ▼
+[102, Spring]
+      │
+      ▼
+[103, Hibernate]
+      │
+      ▼
+    NULL
+```
+
+### Searching
+
+To find key `103`:
+
+```text
+Compare 101
+     │
+Compare 102
+     │
+Compare 103
+     │
+Found
+```
+
+### Time Complexity
+
+| Case       | Complexity |
+| ---------- | ---------- |
+| Average    | O(1)       |
+| Worst Case | O(n)       |
+
+If many collisions occur, lookup becomes slow because every node in the linked list may need to be checked.
+
+---
+
+# Java 7 Example
+
+```java
+Map<Integer, String> map = new HashMap<>();
+
+map.put(1, "Java");
+map.put(17, "Spring");
+map.put(33, "Hibernate");
+```
+
+If all three keys hash to the same bucket:
+
+```text
+Bucket
+  │
+  ▼
+1 → 17 → 33
+```
+
+Everything is stored as a linked list.
+
+---
+
+# 2. Collision Handling After Java 8
+
+Java 8 introduced an optimization.
+
+If a bucket contains **many entries**, the linked list is converted into a **Red-Black Tree**.
+
+### Structure
+
+Initially:
+
+```text
+Bucket
+
+1
+│
+▼
+17
+│
+▼
+33
+```
+
+After the threshold is reached:
+
+```text
+        17
+       /  \
+      1    33
+```
+
+Now searching uses tree traversal instead of linked list traversal.
+
+---
+
+# When does the conversion happen?
+
+Java 8 converts the linked list to a Red-Black Tree only when:
+
+* **Bucket size ≥ 8** (`TREEIFY_THRESHOLD`)
+* **HashMap capacity ≥ 64** (`MIN_TREEIFY_CAPACITY`)
+
+Otherwise, the map resizes instead of treeifying.
+
+---
+
+# Time Complexity
+
+| Case       | Complexity |
+| ---------- | ---------- |
+| Average    | O(1)       |
+| Worst Case | O(log n)   |
+
+This is much better than Java 7's worst-case O(n).
+
+---
+
+# Java 8 Example
+
+```java
+Map<Integer, String> map = new HashMap<>();
+
+// Assume these keys all collide into the same bucket
+map.put(1, "A");
+map.put(17, "B");
+map.put(33, "C");
+map.put(49, "D");
+map.put(65, "E");
+map.put(81, "F");
+map.put(97, "G");
+map.put(113, "H");
+```
+
+If the map's capacity is at least 64, that bucket will be converted from a linked list to a Red-Black Tree.
+
+---
+
+# Before vs After Java 8
+
+## Java 7
+
+```text
+Bucket
+
+101
+ │
+ ▼
+102
+ │
+ ▼
+103
+ │
+ ▼
+104
+ │
+ ▼
+105
+```
+
+Search:
+
+```text
+101
+ ↓
+102
+ ↓
+103
+ ↓
+104
+ ↓
+105
+```
+
+Time: **O(n)**
+
+---
+
+## Java 8
+
+```text
+        103
+       /   \
+     101   105
+       \   /
+      102 104
+```
+
+Search:
+
+```text
+Root
+ ↓
+Left/Right
+ ↓
+Found
+```
+
+Time: **O(log n)**
+
+---
+
+# Comparison
+
+| Feature            | Java 7                      | Java 8+                     |
+| ------------------ | --------------------------- | --------------------------- |
+| Bucket Structure   | LinkedList                  | LinkedList → Red-Black Tree |
+| Collision Handling | LinkedList                  | Tree after threshold        |
+| Worst Case Search  | O(n)                        | O(log n)                    |
+| Performance        | Slower with many collisions | Better with many collisions |
+
+---
+
+# Why did Java 8 introduce Red-Black Trees?
+
+Imagine one bucket has **10,000 entries** because of collisions.
+
+### Java 7
+
+```text
+10000 Nodes
+    │
+    ▼
+Search One by One
+
+Time = O(n)
+```
+
+### Java 8
+
+```text
+10000 Nodes
+      │
+      ▼
+Red-Black Tree
+
+Time = O(log n)
+```
+
+The tree greatly improves lookup performance when collisions are high.
+
+---
+
+# Interview Answer (30 seconds)
+
+> **Before Java 8, HashMap handled collisions using a linked list, so the worst-case lookup time was O(n). Starting with Java 8, if a bucket contains 8 or more entries and the table capacity is at least 64, the linked list is converted into a Red-Black Tree. This improves the worst-case lookup time to O(log n), while the average case remains O(1).**
+
+## Memory Trick
+
+```text
+Java 7
+--------
+Collision
+     │
+LinkedList
+     │
+Worst Case = O(n)
+
+Java 8+
+--------
+Collision
+     │
+LinkedList
+     │
+8+ Nodes
+     │
+Red-Black Tree
+     │
+Worst Case = O(log n)
+```
+
+### One-line Rule
+
+* **Before Java 8:** Collision → **LinkedList**
+* **After Java 8:** Collision → **LinkedList**, then **Red-Black Tree** when the bucket becomes large enough.

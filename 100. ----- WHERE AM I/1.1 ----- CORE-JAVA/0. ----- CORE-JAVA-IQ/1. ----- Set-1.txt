@@ -1,0 +1,11 @@
+
+
+1. Store millions of Java objects with fast reads.
+2. Why HashMap over LinkedList?
+3. HashMap collision handling before Java 8.
+4. HashMap collision handling after Java 8.
+5. ConcurrentHashMap vs HashMap.
+Design Patterns
+1. Strategy Pattern.
+2. Extending object behavior without modification (Decorator Pattern).
+3. When to use Strategy vs Decorator.

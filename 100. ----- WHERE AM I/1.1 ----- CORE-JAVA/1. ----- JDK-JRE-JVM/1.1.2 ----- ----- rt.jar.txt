@@ -1,0 +1,512 @@
+In older Java versions (JDK 8 and earlier), the **JRE (Java Runtime Environment)** consists of:
+
+```
+JRE
+│
+├── JVM
+│
+└── Core Java Libraries
+      ├── rt.jar
+      ├── resources.jar
+      ├── jsse.jar
+      ├── charsets.jar
+      └── ...
+```
+
+Let's understand what **`rt.jar`** and **`java.*` packages** contain.
+
+---
+
+# 1. What is `rt.jar`?
+
+`rt.jar` stands for **Runtime JAR**.
+
+It is a JAR file that contains almost all the standard Java classes that your program uses.
+
+Location (JDK 8):
+
+```
+<JAVA_HOME>/jre/lib/rt.jar
+```
+
+---
+
+## Example
+
+When you write:
+
+```java
+String name = "Sunil";
+```
+
+You never wrote the `String` class.
+
+It comes from
+
+```
+java.lang.String
+```
+
+This class is inside **rt.jar**.
+
+---
+
+Suppose you write
+
+```java
+List<String> list = new ArrayList<>();
+```
+
+The JVM loads
+
+```
+java.util.List
+java.util.ArrayList
+```
+
+Both classes are inside **rt.jar**.
+
+---
+
+When you write
+
+```java
+System.out.println("Hello");
+```
+
+The following classes come from **rt.jar**
+
+```
+java.lang.System
+java.io.PrintStream
+```
+
+---
+
+So your code
+
+```
+System
+String
+Object
+List
+HashMap
+ArrayList
+Collections
+Exception
+Math
+Thread
+```
+
+All are already present in **rt.jar**.
+
+---
+
+# 2. What are `java.*` packages?
+
+These are packages provided by Java itself.
+
+Example
+
+```
+java.lang
+java.util
+java.io
+java.sql
+java.net
+java.time
+java.math
+java.nio
+```
+
+Every package contains many classes.
+
+---
+
+### java.lang
+
+Contains basic language classes.
+
+Examples
+
+```
+Object
+String
+System
+Thread
+Math
+Exception
+Runtime
+Class
+Integer
+Double
+Boolean
+```
+
+Example
+
+```java
+String name = "Java";
+```
+
+Uses
+
+```
+java.lang.String
+```
+
+---
+
+### java.util
+
+Utility classes
+
+Contains
+
+```
+ArrayList
+LinkedList
+HashMap
+HashSet
+Collections
+Optional
+Scanner
+Date
+Random
+```
+
+Example
+
+```java
+List<String> list = new ArrayList<>();
+```
+
+---
+
+### java.io
+
+Input/Output
+
+Contains
+
+```
+File
+BufferedReader
+FileReader
+PrintWriter
+ObjectInputStream
+ObjectOutputStream
+```
+
+Example
+
+```java
+File file = new File("abc.txt");
+```
+
+---
+
+### java.sql
+
+Database programming
+
+Contains
+
+```
+Connection
+Statement
+PreparedStatement
+ResultSet
+DriverManager
+```
+
+Example
+
+```java
+Connection con = DriverManager.getConnection(...);
+```
+
+---
+
+### java.net
+
+Networking
+
+Contains
+
+```
+URL
+Socket
+ServerSocket
+HttpURLConnection
+URI
+```
+
+---
+
+### java.time
+
+Java 8 Date API
+
+Contains
+
+```
+LocalDate
+LocalTime
+LocalDateTime
+Period
+Duration
+```
+
+---
+
+### java.math
+
+Large number calculations
+
+Contains
+
+```
+BigInteger
+BigDecimal
+```
+
+---
+
+### java.nio
+
+Fast file handling
+
+Contains
+
+```
+Files
+Paths
+Path
+ByteBuffer
+Channels
+```
+
+---
+
+# Where are these classes stored?
+
+In **JDK 8 and earlier**, these packages are physically stored inside **rt.jar**.
+
+For example:
+
+```
+rt.jar
+│
+├── java/lang/String.class
+├── java/lang/Object.class
+├── java/lang/System.class
+├── java/util/List.class
+├── java/util/ArrayList.class
+├── java/util/HashMap.class
+├── java/io/File.class
+├── java/sql/Connection.class
+├── java/net/Socket.class
+└── ...
+```
+
+Each `.class` file contains Java bytecode for that class.
+
+---
+
+# What happens during execution?
+
+Suppose your program is
+
+```java
+public class Test {
+    public static void main(String[] args) {
+        String s = "Hello";
+        System.out.println(s);
+    }
+}
+```
+
+Execution flow
+
+```
+Test.class
+      │
+      ▼
+JVM starts
+      │
+      ▼
+Needs String class
+      │
+      ▼
+Looks inside rt.jar
+      │
+      ▼
+Loads java/lang/String.class
+      │
+      ▼
+Needs System class
+      │
+      ▼
+Loads java/lang/System.class
+      │
+      ▼
+Program executes
+```
+
+---
+
+# What about Java 9+?
+
+Starting from **Java 9**, `rt.jar` was removed as part of the **Java Platform Module System (JPMS)**.
+
+Instead of one large JAR, the runtime is divided into modules such as:
+
+```
+java.base
+java.sql
+java.xml
+java.logging
+java.desktop
+java.net.http
+```
+
+The classes are stored in a special runtime image (`lib/modules`) rather than in `rt.jar`.
+
+---
+
+## Summary
+
+| JDK 8 and earlier                                              | Java 9+                                                                            |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Core classes are stored in `rt.jar`                            | Core classes are stored in modules (`lib/modules`)                                 |
+| Contains `java.lang`, `java.util`, `java.io`, `java.sql`, etc. | Same packages exist, but organized into modules like `java.base`, `java.sql`, etc. |
+| JVM loads classes from `rt.jar`                                | JVM loads classes from the module runtime image                                    |
+
+So, when people say **"JRE = JVM + Core Libraries"**, in **JDK 8** the **core libraries are primarily the classes packaged inside `rt.jar`**, such as `java.lang.String`, `java.util.ArrayList`, `java.io.File`, and many others. In **Java 9 and later**, those same core libraries are provided through modules instead of `rt.jar`.
+
+
+-----------------------------------
+**Yes, exactly.** 👍 (This is true for **JDK 8 and earlier**.)
+
+The `java.lang` package is **not a separate file**. It is a **package inside `rt.jar`**.
+
+Think of it like this:
+
+```text
+JRE
+│
+├── JVM
+│
+└── lib
+     │
+     ├── rt.jar
+     │      │
+     │      ├── java
+     │      │     ├── lang
+     │      │     │      ├── Object.class
+     │      │     │      ├── String.class
+     │      │     │      ├── System.class
+     │      │     │      ├── Thread.class
+     │      │     │      └── ...
+     │      │     │
+     │      │     ├── util
+     │      │     │      ├── ArrayList.class
+     │      │     │      ├── HashMap.class
+     │      │     │      └── ...
+     │      │     │
+     │      │     ├── io
+     │      │     ├── net
+     │      │     ├── sql
+     │      │     └── ...
+     │      │
+     │      └── javax
+     │            ├── swing
+     │            ├── crypto
+     │            └── ...
+     │
+     └── other jars...
+```
+
+### When you write:
+
+```java
+String s = "Hello";
+```
+
+The compiler understands:
+
+```java
+java.lang.String
+```
+
+At runtime, the JVM loads:
+
+```text
+rt.jar
+   ↓
+java/lang/String.class
+```
+
+Similarly:
+
+```java
+ArrayList<String> list = new ArrayList<>();
+```
+
+The JVM loads:
+
+```text
+rt.jar
+   ↓
+java/util/ArrayList.class
+```
+
+---
+
+## One important point
+
+When people say:
+
+> **`java.lang` package**
+
+they mean the **logical package (namespace)**.
+
+When people say:
+
+> **`rt.jar`**
+
+they mean the **physical JAR file on disk**.
+
+So:
+
+* **Logical organization:** `java.lang`, `java.util`, `java.io`, etc.
+* **Physical storage (JDK 8):** `rt.jar`
+
+### Simple analogy
+
+Imagine this folder structure:
+
+```text
+Library.zip
+│
+├── English
+│      ├── Grammar.pdf
+│      ├── Story.pdf
+│
+├── Math
+│      ├── Algebra.pdf
+│      ├── Geometry.pdf
+```
+
+* `Library.zip` = `rt.jar`
+* `English` = `java.lang`
+* `Grammar.pdf` = `String.class`
+
+You wouldn't say **English is outside Library.zip**. It's a folder **inside** the ZIP file.
+
+The same is true for `java.lang` and `rt.jar`.
+
+> **Note:** This explanation applies to **JDK 8 and earlier**. Starting with **Java 9**, `rt.jar` was removed. The same packages (`java.lang`, `java.util`, etc.) still exist logically, but they are stored in **modules** (such as `java.base`) instead of `rt.jar`.
+
+

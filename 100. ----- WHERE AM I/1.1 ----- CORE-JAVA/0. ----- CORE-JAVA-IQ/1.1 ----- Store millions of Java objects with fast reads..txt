@@ -1,0 +1,126 @@
+For the interview question:
+
+> **Store millions of Java objects with fast reads.**
+
+The simplest and most practical answer is:
+
+### Best Choice: `HashMap`
+
+**Why?**
+
+* ✅ Very fast lookup (`O(1)` average time)
+* ✅ Stores millions of objects efficiently
+* ✅ Retrieves data using a unique key
+* ✅ Most commonly used for caching and in-memory storage
+
+### Example
+
+```java
+import java.util.HashMap;
+import java.util.Map;
+
+class Employee {
+    int id;
+    String name;
+
+    Employee(int id, String name) {
+        this.id = id;
+        this.name = name;
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+
+        Map<Integer, Employee> employees = new HashMap<>();
+
+        employees.put(101, new Employee(101, "John"));
+        employees.put(102, new Employee(102, "David"));
+
+        // Fast read
+        Employee emp = employees.get(101);
+
+        System.out.println(emp.name);
+    }
+}
+```
+
+Output:
+
+```
+John
+```
+
+---
+
+## Why not ArrayList?
+
+```java
+employees.get(500000);
+```
+
+This is fast **only if you know the index**.
+
+But if you search by ID:
+
+```java
+for(Employee e : employees){
+    if(e.getId() == 101){
+        ...
+    }
+}
+```
+
+Time Complexity:
+
+```
+O(n)
+```
+
+Not suitable for millions of objects.
+
+---
+
+## Time Complexity Comparison
+
+| Data Structure       | Insert   | Read/Search     |
+| -------------------- | -------- | --------------- |
+| ArrayList (by index) | O(1)     | O(1)            |
+| ArrayList (by value) | O(1)     | O(n)            |
+| HashMap              | O(1)     | O(1)            |
+| TreeMap              | O(log n) | O(log n)        |
+| HashSet              | O(1)     | O(1) (contains) |
+
+---
+
+## Real-Time Example
+
+Suppose an e-commerce application stores **10 million products**.
+
+```java
+Map<Long, Product> productCache = new HashMap<>();
+```
+
+When a customer searches:
+
+```java
+Product product = productCache.get(1000001L);
+```
+
+The lookup is almost instant because `HashMap` uses hashing.
+
+---
+
+## Interview Answer (30 seconds)
+
+> **"If I need to store millions of Java objects and perform very fast reads using a unique key, I would use a `HashMap`. It provides average O(1) insertion and retrieval using hashing, making it the preferred choice for in-memory caches, user sessions, product catalogs, and other large datasets."**
+
+### Follow-up Interview Question
+
+**Q: What if the data doesn't fit in memory?**
+
+**Answer:**
+
+* Store the data in a database (e.g., MySQL, PostgreSQL, MongoDB).
+* Keep frequently accessed objects in an in-memory cache like Redis or Caffeine.
+* Use `HashMap` only for the in-memory portion of the data.

@@ -1,0 +1,1297 @@
+
+
+CompletableFuture: internal using ForkJoinPool
+********************************************************************************************************************
+
+
+CompletableFuture - Simple Explanation
+
+Step 1: What is CompletableFuture?
+
+	CompletableFuture allows a task to run asynchronously (in the background) without blocking the current thread.
+
+	Simple Definition:
+	"CompletableFuture lets a task execute in the background and notifies the caller when it is completed."
+
+Step 2: Why do we use CompletableFuture?
+
+	We use it for two purposes:
+
+	Internal Purpose (Inside the Application)
+	External Purpose (For the Caller/Client)
+	
+Step 3: Internal Purpose
+
+	This is about how the application works internally.
+
+	Benefits
+	✅ Non-blocking execution
+	✅ Background processing
+	✅ Parallel execution
+	
+	✅ Better resource utilization
+	✅ Better scalability	
+	
+Interview Answer
+
+	"We use CompletableFuture internally so that long-running operations don't block the request thread."	
+	
+Step 4: External Purpose
+
+	This is about what the client/user gets.
+
+	Benefits
+	✅ Faster response
+	✅ Non-blocking API
+	✅ Can continue other work
+	✅ Supports callbacks
+	✅ Easy to chain multiple async operations	
+	
+Interview Answer
+
+	"The caller doesn't have to wait. They can continue their work and process the result once the operation is complete."
+	
+Step 5: Internal vs External
+
+| Internal Purpose             | External Purpose            |
+| ---------------------------- | --------------------------- |
+| Runs in background           | Non-blocking API            |
+| Better scalability           | Faster user experience      |
+| Uses thread pool/executor    | Caller can continue working |
+| Doesn't block request thread | Supports callbacks/chaining |
+
+
+Step 6: Real-Time Example
+	Food Delivery App
+
+	Without CompletableFuture
+
+		Place Order
+			 │
+		Wait 5 Seconds
+			 │
+		Order Confirmed
+		
+	The user waits until everything finishes.	
+		
+Step 7: Best Interview Answer
+
+	"CompletableFuture serves both internal and external purposes. Internally, it enables asynchronous, non-blocking processing using background threads, improving scalability and resource utilization. Externally, it provides a non-blocking API so callers can continue their work and handle the result when it becomes available."
+
+Easy Memory Trick
+
+CompletableFuture
+        │
+        ├──────────────┐
+        │              │
+        ▼              ▼
+ Internal          External
+        │              │
+ Background      Non-blocking API
+ Thread Pool     Better User Experience
+ Scalability     Continue Other Work
+ Parallelism     Callbacks & Chaining
+ 
+ One-line Summary
+
+Internal: How the application performs the work (background, non-blocking execution).
+External: How the caller uses the result (non-blocking API, callbacks, chaining).
+
+With CompletableFuture
+
+	Place Order
+		 │
+	Order Accepted Immediately
+		 │
+	Background Processing
+		 │
+	Notification Sent Later
+
+	
+
+	CompletableFuture is a feature introduced in Java 8 that allows us to write 
+
+		Asynchronous, 
+		Chaining,
+		Combine multiple tasks,
+		Blocking, 
+		Callbacks, 
+		Exeption Handling without blocking the main thread,
+		
+1. thenApply() - Transform the Result
+
+thenCompose()	Chain dependent async calls
+
+				when the second call depends on the first call's result.
+								 Used when the second async call depends on the first result.
+								 Suppose payment can only be fetched after getting the order.
+
+thenCombine()	Merge independent futures
+
+allOf()			Wait for all futures
+
+exceptionally()	Fallback on error, Used for fallback recovery.
+
+handle()		Used when you want both:Success result,Exception result
+
+whenComplete()	Logging/Auditing after completion,It does not change the result.							
+				
+1. thenApply() - Transform the Result
+
+	You can chain thenApply() multiple times. Each thenApply() receives the result of the previous stage, transforms it, and passes it to the next stage.
+	
+														CompletableFuture<String> future = CompletableFuture
+																.supplyAsync(() -> 101)
+
+																// 1st thenApply
+																.thenApply(id -> "Employee-" + id)
+
+																// 2nd thenApply
+																.thenApply(name -> name.toUpperCase());
+
+														// Get the final result
+														String result = future.join();
+
+														// Use the result
+														System.out.println(result);
+														System.out.println("Length : " + result.length());		
+		Ex:2
+		String result = CompletableFuture
+						.supplyAsync(() -> 100)  //supplyAsync() → Produces the initial value.
+
+						.thenApply(num -> num + 50)   // 150 //Every thenApply() → Takes the previous result and returns a new result.
+
+						.thenApply(num -> num * 2)           // 300
+
+						.thenApply(num -> "Final Value: " + num)
+
+						.join();//join() → Waits for the computation to finish and retrieves the final result.
+
+				System.out.println(result);
+				
+				Yes. If an exception occurs before or inside thenApply(), then thenApply() will not execute. The CompletableFuture becomes completed exceptionally.
+				
+			import java.util.concurrent.CompletableFuture;
+
+			public class ThenApplyException1 {
+
+				public static void main(String[] args) {
+
+					CompletableFuture<String> future = CompletableFuture
+							.supplyAsync(() -> {
+								int x = 10 / 0;   // Exception
+								return "Sunil";
+							})
+
+							.thenApply(name -> {
+								System.out.println("Inside thenApply");
+								return name.toUpperCase();
+							});
+
+					future.join();
+				}
+			}
+			Output
+			Exception in thread "main"
+			java.util.concurrent.CompletionException:
+			java.lang.ArithmeticException: / by zero
+
+			Notice:
+
+			❌ "Inside thenApply" is never printed.
+			thenApply() is skipped because the previous stage failed.
+
+
+
+
+2. thenCompose()	thenCompose() is used when the second asynchronous task depends on the result of the first asynchronous task.
+
+		The important point is:
+
+		thenApply() returns a normal value.
+		thenCompose() returns another CompletableFuture.
+		
+		  CompletableFuture<String> future = CompletableFuture
+                .supplyAsync(() -> 101)
+
+                .thenCompose(id ->
+                        CompletableFuture.supplyAsync(() -> "Employee-" + id))
+
+                .thenCompose(name ->
+                        CompletableFuture.supplyAsync(() -> name + " works in Java Team"));
+
+        String result = future.join();
+
+        System.out.println(result);
+		
+												Example 2: Order Processing
+
+													Imagine an e-commerce application.
+
+													Step 1
+
+													Get Order ID.
+
+													Step 2
+
+													Use Order ID to fetch Order Details.
+
+													Step 3
+
+													Use Order Details to generate Invoice.
+													
+													
+													CompletableFuture<String> future = CompletableFuture
+														.supplyAsync(() -> 5001)
+
+														.thenCompose(orderId ->
+																CompletableFuture.supplyAsync(() ->
+																		"Order-" + orderId))
+
+														.thenCompose(order ->
+																CompletableFuture.supplyAsync(() ->
+																		"Invoice generated for " + order));
+
+													String result = future.join();
+
+													System.out.println(result);
+			
+			Interview Tip
+
+				Use thenCompose() when each async operation depends on the previous async result.
+
+				Real-world examples:
+
+				Login → Fetch User → Fetch Permissions
+				Employee ID → Employee Details → Salary Details
+				Order ID → Order Details → Invoice
+				Customer ID → Account Details → Transaction History
+
+				Think of thenCompose() as "do the next async task after this one completes, using its result."
+			
+	
+
+3. thenCombine()	Merge independent futures
+
+		thenCombine() is used when two asynchronous tasks are independent, and after both complete, you combine their results.
+
+		Rule: Both tasks can run at the same time because they do not depend on each other.
+		
+		Example 1: Employee Name + Department
+
+			Suppose:
+
+			Task 1 fetches the employee name.
+			Task 2 fetches the employee department.
+			After both finish, combine them.
+		
+		CompletableFuture<String> employeeName =CompletableFuture.supplyAsync(() -> "Sunil");
+
+        CompletableFuture<String> department =CompletableFuture.supplyAsync(() -> "Java Team");
+
+        CompletableFuture<String> result =employeeName.thenCombine(department,
+                        (name, dept) -> name + " works in " + dept);
+
+        System.out.println(result.join());
+		
+		
+		Example 2: Product Price + Discount
+
+			Suppose:
+
+			Task 1 gets the product price.
+			Task 2 gets the discount.
+			After both complete, calculate the final price.
+
+Difference between thenCompose() and thenCombine()
+			
+| `thenCompose()`                                     | `thenCombine()`                                |
+| --------------------------------------------------- | ---------------------------------------------- |
+| Second task **depends** on the first task's result. | Both tasks are **independent**.                |
+| Runs tasks one after another.                       | Both tasks can run in parallel.                |
+| Example: Employee ID → Employee Details             | Example: Employee Name + Department            |
+| Returns a flattened `CompletableFuture<T>`.         | Combines the results of two completed futures. |
+			
+Easy way to remember
+	thenCompose() = Dependency (Task 2 needs Task 1's result)
+	thenCombine() = Parallel + Merge (Task 1 and Task 2 are independent, then merge their results)			
+			
+-------------------------		
+
+allOf()			Wait for all futures
+
+		CompletableFuture.allOf() is used when you have multiple independent asynchronous tasks and you want to wait until all of them complete.
+
+		Important: allOf() does not combine results automatically. It only waits for all tasks to finish. You must call join() on each future to get its result.
+		
+		Example 1: Fetch Employee Name, Department, and Salary
+
+			Suppose we need to fetch:
+
+				Employee Name
+				Department
+				Salary
+
+				These are independent tasks, so they can run in parallel.
+			
+															CompletableFuture<String> name =
+																	CompletableFuture.supplyAsync(() -> "Sunil");
+
+															CompletableFuture<String> department =
+																	CompletableFuture.supplyAsync(() -> "Java Team");
+
+															CompletableFuture<Integer> salary =
+																	CompletableFuture.supplyAsync(() -> 80000);
+
+															// Wait for all tasks
+															CompletableFuture<Void> all =
+																	CompletableFuture.allOf(name, department, salary);
+
+															// Wait until all complete
+															all.join();
+
+															// Read individual results
+															System.out.println("Name       : " + name.join());
+															System.out.println("Department : " + department.join());
+															System.out.println("Salary     : " + salary.join());	
+			
+			
+										
+								When should you use allOf()?
+
+									Use allOf() when:
+
+									You have 3 or more independent async tasks.
+									You need all tasks to complete before continuing.
+									You don't want to manually call join() one by one just to wait.
+
+									Examples:
+
+									Fetch User, Orders, and Notifications together.
+									Download multiple files.
+									Call multiple microservices in parallel.
+									Generate multiple reports simultaneously.		
+			
+Difference between thenCombine() and allOf()		
+				
+	| `thenCombine()`                       | `allOf()`                                     |
+	| ------------------------------------- | --------------------------------------------- |
+	| Combines **2** futures.               | Waits for **any number** of futures.          |
+	| Returns the combined result directly. | Returns `CompletableFuture<Void>`.            |
+	| Used to merge two results.            | Used to wait for all tasks to finish.         |
+	| Example: Name + Department            | Example: Name + Department + Salary + Address |
+		
+Interview Tip
+
+	Think of it like this:
+
+	thenCombine() → 2 tasks → Combine their results.
+	allOf() → Many tasks → Wait for all of them to finish.
+
+exceptionally()	Fallback on error
+
+		exceptionally() is used to handle exceptions in a CompletableFuture pipeline and provide a fallback value instead of letting the program fail.
+
+		Rule: If any previous stage throws an exception, exceptionally() is executed.
+
+		CompletableFuture<Integer> future = CompletableFuture
+						.supplyAsync(() -> 10 / 0)   // Exception
+
+						.exceptionally(ex -> {
+							System.out.println("Error: " + ex.getMessage());
+							return 0;   // Default value
+						});
+
+				System.out.println("Result: " + future.join());
+	Ex: 2
+				
+			CompletableFuture<String> future = CompletableFuture
+							.supplyAsync(() -> {
+
+								int employeeId = 999;
+
+								if (employeeId != 101) {
+									throw new RuntimeException("Employee Not Found");
+								}
+
+								return "Sunil";
+							})
+
+							.exceptionally(ex -> {
+								System.out.println("Error: " + ex.getMessage());
+								return "Unknown Employee";
+							});
+
+			System.out.println(future.join());
+
+Real-Time Use Cases
+
+1. Microservice Call: CompletableFuture.supplyAsync(() -> callPaymentService())
+									   .exceptionally(ex -> "Payment Service Unavailable");
+									   
+				Instead of crashing, return a friendly message.
+
+2. Database Query; CompletableFuture.supplyAsync(() -> getEmployee())
+									.exceptionally(ex -> new Employee("Default Employee"));
+
+
+				Return a default employee if the database is unavailable.
+
+
+Without exceptionally()
+		CompletableFuture<Integer> future =
+				CompletableFuture.supplyAsync(() -> 10 / 0);
+
+		System.out.println(future.join());
+
+		Output:
+
+		Exception in thread "main"
+		java.util.concurrent.CompletionException:
+		java.lang.ArithmeticException: / by zero
+
+		The exception propagates to the caller.
+
+With exceptionally()
+
+		CompletableFuture<Integer> future =
+				CompletableFuture.supplyAsync(() -> 10 / 0)
+						.exceptionally(ex -> 0);
+
+		System.out.println(future.join());
+
+		Output:
+
+		0
+
+		The exception is caught, and a fallback value is returned.
+
+When should you use exceptionally()?
+
+		Use it when you want to:
+
+			Return a default value if an async task fails.
+			Log the exception and continue processing.
+			Prevent the entire async pipeline from failing.
+
+		Examples:
+
+			Payment service unavailable → Return "Payment Pending".
+			Employee not found → Return a default employee.
+			File download fails → Return "Download Failed".
+			Database unavailable → Return cached data.
+
+exceptionally() vs thenApply()
+
+| `thenApply()`                          | `exceptionally()`                                      |
+| -------------------------------------- | ------------------------------------------------------ |
+| Runs when the previous stage succeeds. | Runs only when the previous stage throws an exception. |
+| Transforms a successful result.        | Handles failures and provides a fallback result.       |
+| Example: `100 → 200`                   | Example: Exception → `0`                               |
+
+Easy interview answer:
+
+		thenApply() → Process success.
+		exceptionally() → Handle failure and return a fallback value.
+
+
+handle()		Process success or error
+
+
+		handle() is one of the most powerful methods in CompletableFuture.
+
+		Unlike exceptionally():
+
+		✅ handle() is called whether the previous stage succeeds or fails.
+		✅ It receives both the result and the exception.
+		✅ It always returns a new value.
+
+		handle((result, exception) -> {
+			...
+		})
+
+		result → Contains the successful result (or null if an exception occurred).
+		exception → Contains the exception (or null if the computation succeeded)
+
+		CompletableFuture<String> future = CompletableFuture
+						.supplyAsync(() -> 50000)
+
+						.handle((salary, ex) -> {
+
+							if (ex == null) {
+								return "Salary : " + salary;
+							} else {
+								return "Salary not available";
+							}
+						});
+
+				System.out.println(future.join()); //Salary : 50000
+																
+														
+														CompletableFuture<String> future = CompletableFuture
+																.supplyAsync(() -> {
+
+																	throw new RuntimeException("Employee Not Found");
+
+																})
+
+																.handle((result, ex) -> {
+
+																	if (ex != null) {
+																		return "Default Employee";
+																	}
+
+																	return result;
+																});
+
+														System.out.println(future.join());  // output: Default Employee
+														
+	Difference between handle() and exceptionally()
+	
+		exceptionally()
+
+		Runs only on failure.													
+																
+		CompletableFuture<Integer> future =
+				CompletableFuture.supplyAsync(() -> 10 / 0)
+						.exceptionally(ex -> 0);														
+																	
+			handle()
+
+			Runs on both success and failure.	
+
+			CompletableFuture<Integer> future =
+					CompletableFuture.supplyAsync(() -> 100)
+
+					.handle((result, ex) -> {
+
+						if (ex != null)
+							return 0;
+
+						return result * 2;
+					});
+
+			System.out.println(future.join());
+
+If an exception occurred instead, the same handle() block would run and could return 0.
+
+| Method            | Success | Failure | Access Result | Access Exception |
+| ----------------- | :-----: | :-----: | :-----------: | :--------------: |
+| `thenApply()`     |    ✅    |    ❌    |       ✅       |         ❌        |
+| `exceptionally()` |    ❌    |    ✅    |       ❌       |         ✅        |
+| `handle()`        |    ✅    |    ✅    |       ✅       |         ✅        |
+
+When should you use handle()?
+
+Use handle() when you want to:
+
+	Process the successful result if everything is fine.
+	Recover from an exception if something goes wrong.
+	Continue the pipeline with a value regardless of success or failure.
+Common real-world scenarios
+	Payment service → Return payment status if successful, otherwise "Payment Pending".
+	Employee service → Return employee details if found, otherwise "Default Employee".
+	File processing → Return processed content if successful, otherwise "Empty File".
+	Database query → Return data if available, otherwise return cached/default data.
+
+Easy interview answer
+	thenApply() → Runs only on success.
+	exceptionally() → Runs only on failure.
+	handle() → Runs in both success and failure cases, giving you access to both the result and the exception.
+
+CompletableFuture.supplyAsync(() -> "Java")
+    .thenApply(s -> s.toUpperCase())
+    .thenApply(s -> {
+        throw new RuntimeException("Error");
+    })
+    .thenApply(s -> s + " Programming"); // ❌ Never executes
+	
+	
+You can recover using methods like:
+
+	exceptionally()
+	handle()
+	whenComplete() (for logging/cleanup, but it doesn't recover by itself)
+
+------------------
+
+whenComplete() is mainly used for logging, cleanup, auditing, or notification after a CompletableFuture completes.
+
+	Rule: whenComplete() is executed whether the task succeeds or fails.
+
+	Unlike handle():
+
+	✅ It receives both the result and the exception.
+	❌ It does not change the result.
+	❌ It is not meant for recovery.
+
+whenComplete((result, exception) -> {
+    ...
+})
+
+result → Success result (or null if failed)
+exception → Exception (or null if success)
+
+example:
+
+				import java.util.concurrent.CompletableFuture;
+
+				public class WhenCompleteExample1 {
+
+					public static void main(String[] args) {
+
+						CompletableFuture<String> future = CompletableFuture
+								.supplyAsync(() -> "Sunil")
+
+								.whenComplete((result, ex) -> {
+
+									if (ex == null) {
+										System.out.println("Successfully fetched: " + result);
+									} else {
+										System.out.println("Error: " + ex.getMessage());
+									}
+								});
+
+						System.out.println("Final Result: " + future.join());
+					}
+				}
+Successfully fetched: Sunil
+Final Result: Sunil	
+				
+whenComplete() logs the result.
+It does not modify the returned value.
+
+													Example 2:
+
+													import java.util.concurrent.CompletableFuture;
+
+													public class WhenCompleteExample2 {
+
+														public static void main(String[] args) {
+
+															CompletableFuture<String> future = CompletableFuture
+																	.supplyAsync(() -> {
+																		throw new RuntimeException("Database Down");
+																	})
+
+																	.whenComplete((result, ex) -> {
+
+																		if (ex != null) {
+																			System.out.println("Logging Error: " + ex.getMessage());
+																		}
+																	});
+
+															future.join();
+														}
+													}
+								Logging Error: java.lang.RuntimeException: Database Down
+
+									Exception in thread "main"
+									java.util.concurrent.CompletionException:
+									java.lang.RuntimeException: Database Down
+													
+													
+		Notice:
+
+✅ whenComplete() executed.
+✅ Error was logged.
+❌ Exception was not handled.
+❌ join() still throws the exception.
+
+whenComplete() vs handle()
+
+
+whenComplete()
+
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(() -> "Java")
+
+        .whenComplete((result, ex) -> {
+            System.out.println(result);
+        });
+
+System.out.println(future.join());  //output: java
+
+The result is unchanged.
+
+
+handle()
+
+		CompletableFuture<String> future =
+				CompletableFuture.supplyAsync(() -> "Java")
+
+				.handle((result, ex) -> result.toUpperCase());
+
+		System.out.println(future.join());
+
+		Output
+
+		JAVA
+
+		handle() transforms the result.
+
+Comparison
+
+| Method            | Runs on Success | Runs on Failure | Can Modify Result | Can Recover |
+| ----------------- | :-------------: | :-------------: | :---------------: | :---------: |
+| `thenApply()`     |        ✅        |        ❌        |         ✅         |      ❌      |
+| `exceptionally()` |        ❌        |        ✅        |         ✅         |      ✅      |
+| `handle()`        |        ✅        |        ✅        |         ✅         |      ✅      |
+| `whenComplete()`  |        ✅        |        ✅        |         ❌         |      ❌      |
+
+When should you use whenComplete()?
+
+Use it for:
+
+	Logging
+	Audit records
+	Closing resources
+	Sending notifications
+	Measuring execution time
+	Printing success/failure status
+
+Examples:
+
+	Log "Payment Successful".
+	Log "Employee fetched".
+	Record API response time.
+	Close database connections.
+	Send an audit event after processing.
+
+Easy Interview Answer
+handle() → Inspect the result/exception and return a new value (it can recover).
+whenComplete() → Inspect the result/exception for side effects only (logging, cleanup, auditing). It does not change the result or recover from exceptions.
+		
+	Why do we need it? Future
+	-------------------------
+	
+		Before Java 8, we used Future.
+
+			Problem with Future:
+
+				Cannot chain tasks
+				No easy exception handling
+				Blocking using .get()
+
+			CompletableFuture solves all these problems.
+			
+			Important Methods of Future
+			Method			Purpose
+			
+			get()			Wait and get result (blocking)
+			cancel()		Cancel task
+			isDone()		Check if completed
+			isCancelled()	Check if cancelled
+						
+			Major Problems with Future 
+
+				❌ get() is blocking
+
+				❌ Cannot chain tasks
+
+				❌ No easy exception handling
+
+				❌ Cannot combine multiple futures easily
+
+				❌ No callback support
+			
+	Note: If we call get() or join() on CompletableFuture, the current thread becomes blocking until the result is available.
+
+		get: checked exception
+		join: unchecked exception
+	
+When NOT to Use CompletableFuture?
+..................................
+
+	When using full reactive frameworks like Spring WebFlux
+
+	When using Project Reactor (Mono, Flux)
+
+	For simple synchronous logic
+
+-----------------------------------------------------------------------------------------------------------------------------------
+
+Difference: thenApply vs thenCompose
+*************************************
+
+public CompletableFuture<OrderResponse> getOrderDetails(Long id) {
+
+    CompletableFuture<Order> orderFuture =
+            CompletableFuture.supplyAsync(() -> orderRepo.findById(id));
+
+    CompletableFuture<Payment> paymentFuture =
+            CompletableFuture.supplyAsync(() -> paymentService.getPayment(id));
+
+    CompletableFuture<Shipment> shipmentFuture =
+            CompletableFuture.supplyAsync(() -> shipmentService.getShipment(id));
+
+    return CompletableFuture.allOf(
+                    orderFuture,
+                    paymentFuture,
+                    shipmentFuture)
+            .thenApply(v -> new OrderResponse(
+                    orderFuture.join(),
+                    paymentFuture.join(),
+                    shipmentFuture.join()));
+}
+
+i want to apply this synario for thenCombine, thenCompose, exceptionally, handle, when complex
+
+--------------------------------------------------
+
+public CompletableFuture<OrderResponse> getOrderDetails(Long id) {
+
+    CompletableFuture<Order> orderFuture =
+            CompletableFuture.supplyAsync(
+                    () -> orderRepo.findById(id));
+
+    CompletableFuture<Payment> paymentFuture =
+            CompletableFuture.supplyAsync(
+                    () -> paymentService.getPayment(id))
+                    .exceptionally(ex ->
+                            new Payment(0L, "FAILED"));
+
+    CompletableFuture<Shipment> shipmentFuture =
+            CompletableFuture.supplyAsync(
+                    () -> shipmentService.getShipment(id));
+
+    return orderFuture
+            .thenCombine(paymentFuture,
+                    (order, payment) ->
+                            new OrderPaymentResponse(order, payment))
+
+            .thenCombine(shipmentFuture,
+                    (op, shipment) ->
+                            new OrderResponse(
+                                    op.getOrder(),
+                                    op.getPayment(),
+                                    shipment))
+
+            .whenComplete((result, ex) -> {
+
+                if (ex == null) {
+                    System.out.println(
+                            "Order processed successfully");
+                } else {
+                    System.out.println(
+                            "Order processing failed");
+                }
+            });
+}
+
+              Request
+                 |
+    --------------------------------
+    |              |              |
+ Order Future  Payment Future  Shipment Future
+    |              |              |
+    |         exceptionally()     |
+    |              |              |
+    ------- thenCombine -----------
+                 |
+      Order + Payment
+                 |
+         thenCombine
+                 |
+      + Shipment Data
+                 |
+          OrderResponse
+                 |
+        whenComplete
+                 |
+              Return
+			  
+New Requirement
+Plain Text
+1
+1. Get Order
+2
+2. Using Order ID fetch Payment
+3
+3. Using Order ID fetch Shipment
+4
+4. Build OrderResponse
+Show more lines
+
+Here, Payment and Shipment depend on Order being fetched first.
+
+public CompletableFuture<OrderResponse> getOrderDetails(Long id) {
+
+    return CompletableFuture
+            .supplyAsync(() -> orderRepo.findById(id))
+
+            .thenCompose(order ->
+
+                    CompletableFuture
+                            .supplyAsync(() ->
+                                    paymentService.getPayment(
+                                            order.getOrderId()))
+
+                            .exceptionally(ex ->
+                                    new Payment(0L, "FAILED"))
+
+                            .thenCompose(payment ->
+
+                                    CompletableFuture
+                                            .supplyAsync(() ->
+                                                    shipmentService.getShipment(
+                                                            order.getOrderId()))
+
+                                            .thenApply(shipment ->
+
+                                                    new OrderResponse(
+                                                            order,
+                                                            payment,
+                                                            shipment
+                                                    )
+                                            )
+                            )
+            )
+
+            .whenComplete((result, ex) -> {
+
+                if (ex == null) {
+                    System.out.println("Order processed successfully");
+                } else {
+                    System.out.println("Order processing failed");
+                }
+            });
+}
+
+
+
+
+
+Imagine:
+
+1. Fetch Order
+2. Fetch Payment
+3. Fetch Shipment
+4. Combine all
+5. Handle errors
+6. Log success/failure
+
+public CompletableFuture<OrderResponse> getOrderDetails(Long id) {
+
+    CompletableFuture<Order> orderFuture     =CompletableFuture.supplyAsync( () -> orderRepo.findById(id));
+
+    CompletableFuture<Payment> paymentFuture =CompletableFuture.supplyAsync(() -> paymentService.getPayment(id))
+                    .exceptionally(ex ->new Payment(0L, "FAILED"));
+
+    CompletableFuture<Shipment> shipmentFuture =CompletableFuture.supplyAsync(() -> shipmentService.getShipment(id));
+
+    return orderFuture
+            .thenCombine(paymentFuture,(order, payment) ->new OrderPaymentResponse(order, payment))
+
+            .thenCombine(shipmentFuture,
+                    (op, shipment) ->new OrderResponse(
+                                    op.getOrder(),
+                                    op.getPayment(),
+                                    shipment))
+
+            .whenComplete((result, ex) -> {
+
+                if (ex == null) {
+                    System.out.println(
+                            "Order processed successfully");
+                } else {
+                    System.out.println(
+                            "Order processing failed");
+                }
+            });
+}
+
+Visual Flow
+              Request
+                 |
+    --------------------------------
+    |              |              |
+ Order Future  Payment Future  Shipment Future
+    |              |              |
+    |         exceptionally()     |
+    |              |              |
+    ------- thenCombine -----------
+                 |
+      Order + Payment
+                 |
+         thenCombine
+                 |
+      + Shipment Data
+                 |
+          OrderResponse
+                 |
+        whenComplete
+                 |
+              Return
+			  
+			  
+------------------------------------------Already we have Thread and WebClient then why do we use Completable Feature
+
+That's an excellent interview question. The answer is that **`CompletableFuture` is not a replacement for `Thread` or `WebClient`; it is an abstraction for managing asynchronous work.** It makes writing, combining, and handling async operations much easier.
+
+Let's compare them.
+
+---
+
+# Can we use Thread?
+
+**Yes.**
+
+```java
+new Thread(() -> {
+    // Long running task
+}).start();
+```
+
+### Problems
+
+* ❌ Creates a new thread every time (expensive).
+* ❌ Hard to get the result back.
+* ❌ No easy way to chain operations.
+* ❌ No built-in exception handling.
+* ❌ Difficult to combine multiple tasks.
+
+---
+
+# Can we use WebClient?
+
+**Yes.**
+
+`WebClient` is already **non-blocking**.
+
+```java
+webClient.get()
+         .retrieve()
+         .bodyToMono(Employee.class);
+```
+
+### But...
+
+`WebClient` only solves **HTTP communication**.
+
+It doesn't help you:
+
+* Run database queries asynchronously.
+* Execute CPU-intensive calculations.
+* Combine multiple asynchronous tasks.
+* Handle async exceptions in a clean way.
+
+---
+
+# Why use CompletableFuture?
+
+Because it provides **a complete framework for asynchronous programming**, regardless of whether the task is:
+
+* Calling a REST API
+* Querying a database
+* Reading a file
+* Performing calculations
+* Running multiple tasks in parallel
+
+---
+
+# Example 1: Thread vs CompletableFuture
+
+### Using Thread
+
+```java
+Thread thread = new Thread(() -> {
+    System.out.println("Processing...");
+});
+
+thread.start();
+```
+
+Suppose you need the result.
+
+How do you return it?
+
+```text
+Thread
+   ↓
+No easy way to return a value
+```
+
+---
+
+### Using CompletableFuture
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(() -> "Employee");
+
+System.out.println(future.join());
+```
+
+Output
+
+```
+Employee
+```
+
+Here, getting the result is built in.
+
+---
+
+# Example 2: Three API Calls
+
+Suppose you need
+
+* Employee
+* Salary
+* Address
+
+### Using Threads
+
+```text
+Thread1
+Thread2
+Thread3
+
+Wait...
+Join...
+Collect Results...
+Handle Exceptions...
+```
+
+Lots of manual work.
+
+---
+
+### Using CompletableFuture
+
+```java
+CompletableFuture<Employee> employee = ...
+CompletableFuture<Salary> salary = ...
+CompletableFuture<Address> address = ...
+
+CompletableFuture.allOf(employee, salary, address).join();
+```
+
+Done.
+
+---
+
+# Example 3: WebClient + CompletableFuture
+
+Suppose
+
+* Call Employee Service
+* Call Salary Service
+* Call Department Service
+
+You can combine all results.
+
+```java
+CompletableFuture<Employee> employee = ...
+CompletableFuture<Salary> salary = ...
+CompletableFuture<Department> department = ...
+
+CompletableFuture.allOf(employee, salary, department)
+        .join();
+```
+
+`WebClient` performs the HTTP calls, while `CompletableFuture` coordinates the asynchronous workflow.
+
+---
+
+# Why not just Thread?
+
+| Thread                      | CompletableFuture                             |
+| --------------------------- | --------------------------------------------- |
+| Low-level API               | High-level async API                          |
+| Manual thread management    | Uses thread pools (`Executor`)                |
+| Difficult to return results | Returns values naturally                      |
+| No chaining                 | Supports `thenApply()`, `thenCompose()`, etc. |
+| Manual exception handling   | Built-in exception handling                   |
+| Difficult to combine tasks  | `thenCombine()`, `allOf()`, `anyOf()`         |
+
+---
+
+# Why not just WebClient?
+
+| WebClient                                   | CompletableFuture                                |
+| ------------------------------------------- | ------------------------------------------------ |
+| Only for HTTP calls                         | Works with any asynchronous task                 |
+| Returns `Mono`/`Flux`                       | Returns `CompletableFuture`                      |
+| Cannot coordinate all async logic by itself | Can combine, chain, and recover from async tasks |
+
+---
+
+# Real-Time Scenario
+
+Imagine you're building an employee dashboard.
+
+You need to fetch:
+
+1. Employee details (REST API)
+2. Salary (Database)
+3. Leave balance (REST API)
+
+Without `CompletableFuture`:
+
+```text
+Call API
+Wait
+
+Call DB
+Wait
+
+Call API
+Wait
+
+Total = Slow
+```
+
+With `CompletableFuture`:
+
+```text
+Employee API ----\
+                  \
+Salary DB ---------> Run in Parallel
+                  /
+Leave API --------/
+
+       ↓
+
+Combine Results
+```
+
+Much faster because all three tasks run concurrently.
+
+---
+
+# Interview Answer
+
+**Q: We already have `Thread` and `WebClient`. Why do we need `CompletableFuture`?**
+
+**Answer:**
+
+* `Thread` is a low-level API for creating threads. It doesn't provide easy ways to return results, chain operations, combine tasks, or handle exceptions.
+* `WebClient` is a non-blocking HTTP client. It is designed only for making asynchronous HTTP requests.
+* `CompletableFuture` is a general-purpose asynchronous programming API. It lets you execute tasks asynchronously, chain dependent operations, combine independent tasks, handle exceptions, and coordinate multiple asynchronous operations in a clean, readable way.
+
+**Easy Memory Trick**
+
+```text
+Thread
+   ↓
+Runs a task
+
+WebClient
+   ↓
+Calls an API
+
+CompletableFuture
+   ↓
+Manages the entire async workflow
+   ↓
+✔ Return Results
+✔ Chain Tasks
+✔ Combine Tasks
+✔ Handle Exceptions
+✔ Coordinate Async Operations
+```
+
+So, think of **`Thread` as the worker**, **`WebClient` as one type of asynchronous job**, and **`CompletableFuture` as the manager that coordinates all the asynchronous work.**
+

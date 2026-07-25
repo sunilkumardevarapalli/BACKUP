@@ -1,0 +1,256 @@
+There is a small misconception in the question.
+
+> **The Heap is NOT divided into Stack.**
+>
+> **Heap and Stack are two separate memory areas.**
+
+The JVM Runtime Data Areas look like this:
+
+```text
+JVM Runtime Data Areas
+
+├── Heap              ← Object Memory
+├── Java Stack        ← Method Execution Memory
+├── Method Area
+├── PC Register
+└── Native Method Stack
+```
+
+The **Heap is divided into generations**, not into stacks.
+
+---
+
+# Java Heap Structure (Java 8)
+
+The Heap is divided like this:
+
+```text
+                    Heap
+                      │
+      ┌───────────────┴───────────────┐
+      │                               │
+ Young Generation               Old Generation
+      │
+      ├── Eden Space
+      ├── Survivor 0 (S0)
+      └── Survivor 1 (S1)
+```
+
+---
+
+## 1. Eden Space
+
+Every new object is created here.
+
+Example:
+
+```java
+Employee e1 = new Employee();
+Employee e2 = new Employee();
+```
+
+Memory
+
+```text
+Heap
+
+Young Generation
+
+Eden
+
+Employee Object
+
+Employee Object
+```
+
+---
+
+## 2. Survivor Spaces
+
+There are two survivor spaces.
+
+```text
+Young Generation
+
+Eden
+
+↓
+
+Survivor 0
+
+↓
+
+Survivor 1
+```
+
+When Minor GC happens,
+
+live objects move
+
+```text
+Eden
+
+↓
+
+Survivor 0
+
+↓
+
+Survivor 1
+
+↓
+
+Old Generation
+```
+
+---
+
+## 3. Old Generation (Tenured)
+
+Objects that live for a long time move here.
+
+Example
+
+```java
+static List<Employee> list = new ArrayList<>();
+
+list.add(new Employee());
+```
+
+Since the object stays alive,
+
+it eventually moves to the Old Generation.
+
+---
+
+# What is Java Stack then?
+
+The Java Stack is **completely separate** from the Heap.
+
+```java
+Employee e = new Employee();
+```
+
+Memory
+
+```text
+Java Stack                     Heap
+
+e -------------------------> Employee Object
+```
+
+The variable `e` is stored in the **Stack**.
+
+The actual `Employee` object is stored in the **Heap**.
+
+---
+
+# Complete Memory Layout
+
+```text
+                    JVM
+
+        ┌───────────────────────┐
+        │ Method Area           │
+        └───────────────────────┘
+
+        ┌───────────────────────┐
+        │ Heap                  │
+        │                       │
+        │ Young Generation      │
+        │ ├── Eden              │
+        │ ├── Survivor 0        │
+        │ └── Survivor 1        │
+        │                       │
+        │ Old Generation        │
+        └───────────────────────┘
+
+        ┌───────────────────────┐
+        │ Java Stack            │
+        │ main() Frame          │
+        │ m1() Frame            │
+        └───────────────────────┘
+
+        ┌───────────────────────┐
+        │ PC Register           │
+        └───────────────────────┘
+
+        ┌───────────────────────┐
+        │ Native Method Stack   │
+        └───────────────────────┘
+```
+
+---
+
+# Example
+
+```java
+public class Test {
+
+    public static void main(String[] args) {
+
+        Employee e = new Employee();
+
+        e.display();
+    }
+}
+```
+
+Memory
+
+```text
+                 Stack
+
+main()
+
+e  ------------------------------+
+                                 |
+                                 |
+                                 ▼
+
+                 Heap
+
+Young Generation
+
+Eden
+
+Employee Object
+```
+
+When
+
+```java
+e.display();
+```
+
+is called,
+
+the Stack becomes
+
+```text
+Java Stack
+
+display()
+
+main()
+```
+
+The Heap **does not change** because no new object was created.
+
+---
+
+# Interview Summary
+
+| Memory Area                           | Stores                                                 |
+| ------------------------------------- | ------------------------------------------------------ |
+| **Heap**                              | Objects and arrays                                     |
+| **Young Generation**                  | Newly created objects                                  |
+| **Eden**                              | All new objects are allocated here                     |
+| **Survivor S0/S1**                    | Objects that survive Minor GC                          |
+| **Old Generation**                    | Long-lived objects                                     |
+| **Java Stack**                        | Method frames, local variables, parameters, references |
+| **Method Area (Metaspace in Java 8)** | Class metadata, method metadata, runtime constant pool |
+
+### One more important interview point
+
+The division of the Heap into **Young Generation** and **Old Generation** is **an implementation detail of the HotSpot JVM**, not something mandated by the JVM specification. Different JVM implementations may organize the heap differently, although HotSpot's generational layout is by far the most common.
