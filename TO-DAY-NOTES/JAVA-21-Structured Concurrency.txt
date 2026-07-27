@@ -1,0 +1,539 @@
+# Structured Concurrency in Java 21 (JEP 453 - Preview)
+
+**Structured Concurrency** is a new concurrency model introduced as a **Preview Feature** in **Java 21** (JEP 453). It treats a group of related concurrent tasks as **one logical unit of work**, making concurrent programs easier to write, maintain, debug, and recover from failures. ([OpenJDK][1])
+
+---
+
+# Why was it introduced?
+
+Suppose you have an API that needs data from two services.
+
+```
+Client Request
+      |
+      V
+-------------------------
+| Fetch User Service    |
+| Fetch Order Service   |
+-------------------------
+      |
+      V
+ Build Response
+```
+
+With traditional `ExecutorService`, if one task fails:
+
+* Other tasks may continue unnecessarily.
+* You must manually cancel them.
+* Resources may leak.
+* Error handling becomes complex.
+
+Structured Concurrency solves these problems automatically.
+
+---
+
+# Real-time Example
+
+Suppose an e-commerce application needs:
+
+* User Details
+* Order Details
+* Recommendation Details
+
+All are independent.
+
+Without concurrency:
+
+```
+findUser()           -> 2 sec
+fetchOrders()        -> 3 sec
+fetchRecommendation()-> 2 sec
+
+Total = 7 seconds
+```
+
+Run them concurrently:
+
+```
+User ------------2 sec
+Orders ----------3 sec
+Recommendation --2 sec
+
+Total ≈ 3 seconds
+```
+
+Structured Concurrency manages all these subtasks as **one parent task**.
+
+---
+
+# Traditional ExecutorService
+
+```java
+ExecutorService executor = Executors.newFixedThreadPool(3);
+
+Future<User> user = executor.submit(this::findUser);
+Future<List<Order>> orders = executor.submit(this::fetchOrders);
+
+User u = user.get();
+List<Order> o = orders.get();
+```
+
+Problems:
+
+* Must shutdown executor manually.
+* Must cancel remaining tasks manually.
+* Exceptions handled separately.
+* Possible thread leaks.
+
+---
+
+# Structured Concurrency
+
+```java
+try (var scope =
+         new StructuredTaskScope.ShutdownOnFailure()) {
+
+    var userTask = scope.fork(this::findUser);
+    var orderTask = scope.fork(this::fetchOrders);
+
+    scope.join();
+    scope.throwIfFailed();
+
+    User user = userTask.get();
+    List<Order> orders = orderTask.get();
+}
+```
+
+Everything belongs to one scope.
+
+When the scope ends:
+
+* all tasks finished
+* or cancelled
+* resources released automatically
+
+([OpenJDK][1])
+
+---
+
+# Important Classes
+
+## 1. StructuredTaskScope
+
+Main class.
+
+```
+Parent Task
+      |
+      +------Child Task 1
+      |
+      +------Child Task 2
+      |
+      +------Child Task 3
+```
+
+The parent controls all child tasks.
+
+---
+
+## 2. fork()
+
+Creates a new subtask.
+
+```java
+var task = scope.fork(() -> findUser());
+```
+
+Equivalent to:
+
+```
+Start one concurrent task
+```
+
+---
+
+## 3. join()
+
+Waits until all subtasks complete.
+
+```java
+scope.join();
+```
+
+Similar to:
+
+```
+Thread.join()
+```
+
+but for multiple tasks.
+
+---
+
+## 4. throwIfFailed()
+
+Checks if any subtask failed.
+
+```java
+scope.throwIfFailed();
+```
+
+If any child throws an exception:
+
+```
+Child 2 Failed
+
+↓
+
+Parent throws exception
+```
+
+---
+
+# Shutdown Policies
+
+## ShutdownOnFailure
+
+If any task fails:
+
+```
+Task1 ✓
+
+Task2 ✗
+
+Task3 Running
+
+↓
+
+Task3 Cancelled Automatically
+```
+
+Good for:
+
+* Payment
+* Banking
+* Order Processing
+
+where every task must succeed.
+
+Example
+
+```java
+try (var scope =
+     new StructuredTaskScope.ShutdownOnFailure()) {
+
+    var user = scope.fork(this::findUser);
+    var order = scope.fork(this::fetchOrder);
+
+    scope.join();
+    scope.throwIfFailed();
+
+    return new Response(user.get(), order.get());
+}
+```
+
+---
+
+## ShutdownOnSuccess
+
+Stop after the first successful result.
+
+Useful when querying multiple servers.
+
+```
+Server1 --------4 sec
+
+Server2 --------2 sec
+
+Server3 --------6 sec
+```
+
+After Server2 responds:
+
+```
+Server2 Success
+
+↓
+
+Cancel Server1
+
+↓
+
+Cancel Server3
+```
+
+---
+
+Example
+
+```java
+try (var scope =
+     new StructuredTaskScope.ShutdownOnSuccess<String>()) {
+
+    scope.fork(() -> callServer1());
+    scope.fork(() -> callServer2());
+    scope.fork(() -> callServer3());
+
+    scope.join();
+
+    String result = scope.result();
+
+    System.out.println(result);
+}
+```
+
+---
+
+# Execution Flow
+
+```
+Parent Thread
+
+     |
+     |
+     +-----------------------------+
+     |                             |
+     |                             |
+Child1                       Child2
+findUser()                  fetchOrders()
+     |                             |
+     +-------------+---------------+
+                   |
+              scope.join()
+                   |
+          throwIfFailed()
+                   |
+           Build Response
+```
+
+---
+
+# Exception Handling
+
+Suppose:
+
+```
+Task1
+
+↓
+
+Success
+
+Task2
+
+↓
+
+Database Exception
+
+Task3
+
+↓
+
+Still Running
+```
+
+With ShutdownOnFailure
+
+```
+Task2 Failed
+
+↓
+
+Task3 Interrupted
+
+↓
+
+Parent gets exception
+```
+
+No orphan threads continue running.
+
+---
+
+# Using Virtual Threads
+
+Structured Concurrency works especially well with **Virtual Threads**.
+
+```java
+Thread.startVirtualThread(() -> {
+
+});
+```
+
+Each subtask can run in its own virtual thread.
+
+Benefits:
+
+* Millions of lightweight threads
+* Better scalability
+* Easier programming than callbacks or reactive chains
+
+([OpenJDK][1])
+
+---
+
+# ExecutorService vs Structured Concurrency
+
+| Feature                   | ExecutorService | Structured Concurrency         |
+| ------------------------- | --------------- | ------------------------------ |
+| Thread lifecycle          | Manual          | Automatic                      |
+| Cancel remaining tasks    | Manual          | Automatic                      |
+| Error propagation         | Manual          | Automatic                      |
+| Resource cleanup          | Manual          | Automatic (try-with-resources) |
+| Parent-child relationship | No              | Yes                            |
+| Thread leaks              | Possible        | Greatly reduced                |
+| Readability               | Moderate        | High                           |
+
+---
+
+# Real-world Use Cases
+
+### 1. E-commerce
+
+```
+Get User
+
+Get Orders
+
+Get Coupons
+
+↓
+
+Combine Response
+```
+
+---
+
+### 2. Banking
+
+```
+Verify Account
+
+↓
+
+Check Balance
+
+↓
+
+Fraud Detection
+
+↓
+
+Risk Score
+```
+
+If fraud detection fails:
+
+```
+Cancel Balance Check
+
+Return Error
+```
+
+---
+
+### 3. Microservices
+
+```
+API Gateway
+
+↓
+
+Customer Service
+
+↓
+
+Inventory Service
+
+↓
+
+Pricing Service
+
+↓
+
+Shipping Service
+```
+
+All services execute concurrently.
+
+If Inventory fails:
+
+```
+Cancel Remaining Calls
+
+↓
+
+Return Failure
+```
+
+---
+
+### 4. Travel Booking
+
+```
+Flight Service
+
+Hotel Service
+
+Cab Service
+
+↓
+
+Return Combined Result
+```
+
+---
+
+# Advantages
+
+* Easier concurrent programming
+* Automatic cancellation
+* Better exception handling
+* No thread leaks
+* Parent controls child tasks
+* Better debugging and observability
+* Excellent fit with Virtual Threads
+* Cleaner, more maintainable code
+
+---
+
+# Limitations
+
+* **Preview feature** in Java 21 (must be enabled with preview flags).
+* Requires JDK 21+.
+* Does **not** replace `ExecutorService`; both APIs continue to have valid use cases. ([OpenJDK][1])
+
+---
+
+# Interview Questions
+
+### Q1. What is Structured Concurrency?
+
+A programming model where multiple related concurrent tasks are managed as a **single unit of work**, simplifying lifecycle management, cancellation, and error handling.
+
+---
+
+### Q2. Which JEP introduced it?
+
+**JEP 453 (Preview)** in Java 21. ([OpenJDK][1])
+
+---
+
+### Q3. Which class is the core of the API?
+
+`StructuredTaskScope`
+
+---
+
+### Q4. Difference between `ShutdownOnFailure` and `ShutdownOnSuccess`?
+
+* **ShutdownOnFailure**: Cancels remaining tasks if any subtask fails.
+* **ShutdownOnSuccess**: Cancels remaining tasks once the first subtask succeeds.
+
+---
+
+### Q5. Why is it a good fit for Virtual Threads?
+
+Virtual Threads make creating many threads inexpensive, while Structured Concurrency provides a safe way to coordinate and manage those threads as a single logical operation. Together they improve scalability, readability, and reliability. ([OpenJDK][1])
+
+[1]: https://openjdk.org/jeps/453?utm_source=chatgpt.com "JEP 453: Structured Concurrency (Preview)"

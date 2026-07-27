@@ -1,0 +1,837 @@
+`max.in.flight.requests.per.connection` is one of the most important Kafka producer configurations.
+
+It controls:
+
+> **How many produce requests the producer is allowed to send to a broker without waiting for previous requests to finish.**
+
+---
+
+# What does "in-flight" mean?
+
+Suppose the producer wants to send 5 batches.
+
+```text
+Batch1
+Batch2
+Batch3
+Batch4
+Batch5
+```
+
+Normally, the producer sends a batch and waits for the acknowledgment (ACK).
+
+```
+Producer
+    |
+    |---- Batch1 ---->
+    |<--- ACK --------
+    |
+    |---- Batch2 ---->
+    |<--- ACK --------
+```
+
+This is **slow**.
+
+---
+
+# With in-flight requests
+
+Kafka allows multiple requests to be "in the air" simultaneously.
+
+For example:
+
+```properties
+max.in.flight.requests.per.connection=5
+```
+
+Now the producer can send:
+
+```text
+Producer
+
+Batch1 ------------------------>
+
+Batch2 ------------------------>
+
+Batch3 ------------------------>
+
+Batch4 ------------------------>
+
+Batch5 ------------------------>
+
+           Broker
+```
+
+The producer **doesn't wait** after each batch.
+
+It waits only after it has sent **5 requests**.
+
+---
+
+# What happens after 5?
+
+Suppose:
+
+```properties
+max.in.flight.requests.per.connection=5
+```
+
+The producer sends:
+
+```text
+Request1
+Request2
+Request3
+Request4
+Request5
+```
+
+Now it **must stop**.
+
+It waits until at least one request completes.
+
+```
+Broker
+
+ACK Request1
+```
+
+Now one slot is free.
+
+The producer can send:
+
+```
+Request6
+```
+
+So there are again 5 in-flight requests.
+
+---
+
+# Why is this useful?
+
+Without in-flight requests:
+
+```
+Send Request1
+Wait ACK
+
+Send Request2
+Wait ACK
+
+Send Request3
+Wait ACK
+```
+
+Very slow.
+
+---
+
+With:
+
+```properties
+max.in.flight.requests.per.connection=5
+```
+
+```
+Send Request1
+Send Request2
+Send Request3
+Send Request4
+Send Request5
+
+Wait for ACKs
+```
+
+Much higher throughput.
+
+---
+
+# Why is the recommendation `<= 5`?
+
+This is related to **idempotent producers**.
+
+When you enable:
+
+```properties
+enable.idempotence=true
+```
+
+Kafka guarantees:
+
+* No duplicate messages
+* Message ordering
+* Exactly-once producer retries (within a partition)
+
+For these guarantees, Kafka requires:
+
+```properties
+acks=all
+
+retries > 0
+
+max.in.flight.requests.per.connection <= 5
+```
+
+---
+
+# What happens if it is greater than 5?
+
+Example:
+
+```properties
+max.in.flight.requests.per.connection=10
+```
+
+The producer may have:
+
+```
+Request1
+Request2
+...
+Request10
+```
+
+all waiting for ACKs.
+
+If failures and retries occur, tracking and preserving ordering becomes more complex. For idempotent producers, Kafka limits the number of concurrent in-flight requests per connection to **5**.
+
+---
+
+# Real Example
+
+Suppose you're sending customer orders.
+
+```
+Order1
+Order2
+Order3
+Order4
+Order5
+Order6
+```
+
+Configuration:
+
+```properties
+max.in.flight.requests.per.connection=5
+```
+
+Timeline:
+
+```
+Time
+
+Producer
+
+Order1 ------------>
+
+Order2 ------------>
+
+Order3 ------------>
+
+Order4 ------------>
+
+Order5 ------------>
+
+        (5 requests in-flight)
+
+Producer waits...
+
+ACK Order2
+
+One slot becomes free
+
+Order6 ------------>
+```
+
+---
+
+# Interview Definition
+
+> **`max.in.flight.requests.per.connection` specifies the maximum number of unacknowledged produce requests that a Kafka producer can send over a single broker connection at the same time.**
+
+* Larger value → Higher throughput
+* Smaller value → Lower throughput but simpler sequencing
+* With `enable.idempotence=true`, Kafka requires this value to be **5 or less** to maintain its delivery guarantees.
+
+### Common production configuration
+
+```properties
+enable.idempotence=true
+acks=all
+retries=Integer.MAX_VALUE
+max.in.flight.requests.per.connection=5
+```
+
+This combination provides:
+
+* High reliability
+* No duplicate messages (from producer retries)
+* Preserved ordering for messages sent to the same partition
+* Good throughput through controlled pipelining
+
+--------------------------------------------------------------------------------------
+
+This is one of the most important Kafka Producer concepts.
+
+## What is `retries`?
+
+`retries` specifies:
+
+> **How many times the Kafka producer will try to send the same message again if the first attempt fails.**
+
+Example:
+
+```properties
+retries=Integer.MAX_VALUE
+```
+
+means:
+
+> **Keep retrying until the message is sent successfully or the producer gives up because of the delivery timeout.**
+
+---
+
+# When does a retry happen?
+
+A retry happens **only if the producer does not receive a successful acknowledgment (ACK)**.
+
+For example:
+
+```text
+Producer
+    |
+    |---- Order1 ---->
+    |
+Broker
+```
+
+Normally:
+
+```text
+Producer -----------------> Broker
+
+            ACK <-----------------
+
+Message Sent Successfully
+```
+
+No retry occurs.
+
+---
+
+# Scenario 1: Broker crashes
+
+```text
+Producer
+
+     |
+
+Order1 ------------------>
+
+                  Broker1 ❌ CRASH
+```
+
+Producer waits for ACK.
+
+```text
+ACK
+
+❌ Not Received
+```
+
+Producer retries.
+
+```text
+Producer
+
+Retry #1 ------------------>
+
+Retry #2 ------------------>
+
+Retry #3 ------------------>
+```
+
+When Broker1 recovers (or another broker becomes leader), the message is sent successfully.
+
+---
+
+# Scenario 2: Network issue
+
+```text
+Producer --------X--------- Broker
+```
+
+The message never reaches the broker.
+
+Producer waits.
+
+```text
+ACK
+
+Not Received
+```
+
+Producer retries automatically.
+
+---
+
+# Scenario 3: Leader election
+
+Suppose:
+
+```text
+P0
+
+Leader -> Broker1
+
+Replica -> Broker2
+```
+
+Producer sends:
+
+```text
+Order100
+```
+
+Immediately:
+
+```text
+Broker1 ❌ DOWN
+```
+
+Kafka elects Broker2 as the new leader.
+
+```text
+Leader -> Broker2
+```
+
+Producer receives a metadata update and retries.
+
+```text
+Retry
+
+Order100 ------------>
+
+Broker2
+```
+
+The message is stored successfully.
+
+---
+
+# What if `retries = 0`?
+
+```properties
+retries=0
+```
+
+Producer tries only once.
+
+```text
+Producer
+
+Order1 -------->
+
+Broker ❌
+
+Message Lost
+```
+
+No retry.
+
+---
+
+# What if `retries = 3`?
+
+```properties
+retries=3
+```
+
+```text
+Attempt1 ❌
+
+Attempt2 ❌
+
+Attempt3 ❌
+
+Attempt4 ❌
+
+Give Up
+```
+
+After the configured retries are exhausted, the producer reports a failure.
+
+---
+
+# Why `Integer.MAX_VALUE`?
+
+Kafka recommends:
+
+```properties
+retries=Integer.MAX_VALUE
+```
+
+because most failures are temporary.
+
+Examples:
+
+* Broker restarted
+* Network glitch
+* Leader election
+* Metadata refresh
+* Short GC pause
+
+The producer keeps retrying instead of immediately failing.
+
+---
+
+# How does this work with `max.in.flight.requests.per.connection=5`?
+
+Suppose:
+
+```properties
+retries=Integer.MAX_VALUE
+
+max.in.flight.requests.per.connection=5
+```
+
+Producer sends:
+
+```text
+Request1
+
+Request2
+
+Request3
+
+Request4
+
+Request5
+```
+
+Broker receives:
+
+```text
+Request1 ✅
+
+Request2 ❌
+
+Request3 ✅
+
+Request4 ✅
+
+Request5 ✅
+```
+
+Only **Request2** is retried.
+
+```text
+Retry Request2
+```
+
+The other successful requests are **not** resent.
+
+---
+
+# Why `max.in.flight <= 5`?
+
+Suppose:
+
+```text
+Request1
+
+Request2
+```
+
+Request1 fails.
+
+Request2 succeeds.
+
+If Request1 is retried later, messages could arrive out of order if retries are not coordinated.
+
+Kafka's idempotent producer tracks these in-flight requests and requires:
+
+```properties
+max.in.flight.requests.per.connection <= 5
+```
+
+to safely preserve ordering and prevent duplicate writes during retries.
+
+---
+
+# Production Configuration
+
+```properties
+enable.idempotence=true
+acks=all
+retries=Integer.MAX_VALUE
+max.in.flight.requests.per.connection=5
+```
+
+This combination provides:
+
+* ✅ Automatic retries on transient failures
+* ✅ No duplicate messages from producer retries
+* ✅ Message ordering within a partition
+* ✅ High reliability
+
+---
+
+## Complete Failure Flow
+
+```text
+                Producer
+
+                    |
+
+          Send Order100
+
+                    |
+
+                    V
+
+               Broker1 (Leader)
+
+                    |
+
+            Broker Crashes ❌
+
+                    |
+
+           ACK Not Received
+
+                    |
+
+      Producer waits briefly
+
+                    |
+
+              Retry Order100
+
+                    |
+
+         New Leader (Broker2)
+
+                    |
+
+              ACK Received ✅
+
+                    |
+
+        Producer marks success
+```
+
+### Interview Definition
+
+**`retries`** is the maximum number of times a Kafka producer automatically resends a message when a send fails because it did not receive a successful acknowledgment (for example, due to a broker failure, network interruption, or leader election). With `retries=Integer.MAX_VALUE`, the producer keeps retrying until the message is acknowledged successfully or the overall delivery timeout is reached.
+
+
+--------------------------
+
+Not exactly. This is a common misunderstanding.
+
+`Integer.MAX_VALUE` is **not 3**.
+
+In Java:
+
+```java
+Integer.MAX_VALUE = 2147483647
+```
+
+So:
+
+```properties
+retries=Integer.MAX_VALUE
+```
+
+means the producer is allowed to retry **up to 2,147,483,647 times** (effectively "keep retrying"). In practice, the producer usually stops earlier if the overall `delivery.timeout.ms` is reached.
+
+---
+
+## Example
+
+Suppose you have:
+
+```properties
+retries=Integer.MAX_VALUE
+max.in.flight.requests.per.connection=5
+```
+
+Producer sends:
+
+```text
+Request1
+Request2
+Request3
+Request4
+Request5
+```
+
+Broker responds:
+
+```text
+Request1 ✅
+
+Request2 ❌
+
+Request3 ✅
+
+Request4 ✅
+
+Request5 ✅
+```
+
+Now only **Request2** failed.
+
+The producer retries **only Request2**.
+
+### Attempt 1
+
+```text
+Request2  ---> ❌ Failed
+```
+
+### Retry 1
+
+```text
+Request2  ---> ❌ Failed
+```
+
+### Retry 2
+
+```text
+Request2  ---> ❌ Failed
+```
+
+### Retry 3
+
+```text
+Request2  ---> ❌ Failed
+```
+
+### Retry 4
+
+```text
+Request2  ---> ❌ Failed
+```
+
+...
+
+The producer keeps retrying.
+
+It could retry:
+
+* 10 times
+* 100 times
+* 1000 times
+
+until either:
+
+* ✅ the broker accepts the request, or
+* ❌ the producer reaches `delivery.timeout.ms`.
+
+---
+
+## If the broker comes back after 5 seconds
+
+```text
+Request2 ---> ❌
+
+Retry1 ---> ❌
+
+Retry2 ---> ❌
+
+Retry3 ---> ❌
+
+Broker recovers
+
+Retry4 ---> ✅ Success
+```
+
+The producer stops retrying because it received an ACK.
+
+---
+
+## If you configure `retries=3`
+
+Then the behavior is different.
+
+```properties
+retries=3
+```
+
+Timeline:
+
+```text
+Original Attempt  ---> ❌
+
+Retry1            ---> ❌
+
+Retry2            ---> ❌
+
+Retry3            ---> ❌
+
+Give Up
+```
+
+So the producer makes:
+
+* 1 original attempt
+* 3 retries
+
+= **4 total send attempts**
+
+---
+
+## Comparison
+
+### `retries=3`
+
+```text
+Attempt1 ❌
+
+Retry1 ❌
+
+Retry2 ❌
+
+Retry3 ❌
+
+Producer throws exception
+```
+
+---
+
+### `retries=Integer.MAX_VALUE`
+
+```text
+Attempt1 ❌
+
+Retry1 ❌
+
+Retry2 ❌
+
+Retry3 ❌
+
+Retry4 ❌
+
+Retry5 ❌
+
+Retry6 ❌
+
+...
+
+RetryN ✅
+```
+
+The producer keeps retrying until it succeeds or the delivery timeout is exceeded.
+
+---
+
+### Interview Answer
+
+* `retries=3` → **1 initial attempt + up to 3 retries = up to 4 total attempts**.
+* `retries=Integer.MAX_VALUE` → The producer keeps retrying the failed request until it succeeds or `delivery.timeout.ms` expires.
+* **Only the failed request is retried**. Successfully acknowledged requests are **not** retried.
+
