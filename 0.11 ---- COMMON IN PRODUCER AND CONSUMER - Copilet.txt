@@ -1,0 +1,677 @@
+Below is a Spring Boot + Apache Kafka Producer & Consumer Interview/Implementation Guide covering all 25 topics from both Producer and Consumer perspectives.
+
+1. Idempotence
+Purpose
+
+Ensures a producer does not write duplicate messages due to retries.
+
+Producer
+spring.kafka.producer.properties.enable.idempotence=true
+spring.kafka.producer.acks=all
+spring.kafka.producer.properties.max.in.flight.requests.per.connection=5
+spring.kafka.producer.retries=2147483647
+
+How it works
+
+Kafka assigns:
+
+Producer ID (PID)
+Sequence Number
+
+Broker tracks sequence numbers and discards duplicates.
+
+Benefits
+
+✅ No duplicate writes during retries
+
+✅ Required for Exactly Once Semantics (EOS)
+
+Consumer
+
+Consumer does not have idempotence.
+
+To achieve idempotent processing:
+
+if(processedEventExists(eventId)) {
+    return;
+}
+
+
+Store processed IDs in:
+
+DB
+Redis
+Cache
+2. Acknowledgement (ACK)
+Purpose
+
+Controls durability and reliability.
+
+Producer
+ACK = 0
+spring.kafka.producer.acks=0
+
+
+Fastest but unsafe.
+
+ACK = 1
+spring.kafka.producer.acks=1
+
+
+Leader acknowledges.
+
+Good balance.
+
+ACK = all (-1)
+spring.kafka.producer.acks=all
+
+
+Leader + ISR replicas acknowledge.
+
+Most reliable.
+
+Consumer
+
+Consumer acknowledges offsets.
+
+Auto Commit
+spring.kafka.consumer.enable-auto-commit=true
+
+Manual Ack
+@KafkaListener(topics="orders")
+public void consume(Order order,
+                    Acknowledgment ack){
+
+   process(order);
+   ack.acknowledge();
+}
+
+
+Preferred in production.
+
+3. Duplicate Prevention
+Producer
+
+Enable:
+
+enable.idempotence=true
+
+
+Use unique event IDs.
+
+OrderCreatedEvent
+{
+   eventId:"123"
+}
+
+Consumer
+
+Check uniqueness.
+
+order_event_tracker
+--------------------
+event_id
+processed_time
+
+
+Insert before processing.
+
+4. Order Management (Message Ordering)
+Producer
+
+Ordering guaranteed only:
+
+Same producer
+Same partition
+
+Use key:
+
+kafkaTemplate.send(
+     "orders",
+     orderId,
+     order
+);
+
+
+Same orderId → same partition.
+
+Avoid:
+
+max.in.flight.requests.per.connection > 5
+
+Consumer
+
+One partition = ordered messages.
+
+Multiple partitions:
+
+P0 → Consumer A
+P1 → Consumer B
+P2 → Consumer C
+
+
+Ordering only inside partition.
+
+5. Configuration
+Producer
+
+Common configs:
+
+bootstrap.servers
+acks=all
+enable.idempotence=true
+retries=2147483647
+batch.size=16384
+linger.ms=5
+compression.type=snappy
+
+Consumer
+group.id=order-group
+auto.offset.reset=earliest
+max.poll.records=500
+enable.auto.commit=false
+
+6. Retry Mechanism
+Producer
+
+Automatic retry.
+
+retries=10
+retry.backoff.ms=1000
+
+Spring Retry
+@Retryable(
+  value = Exception.class,
+  maxAttempts = 3
+)
+
+Consumer
+
+Spring Kafka Retry:
+
+@RetryableTopic(
+    attempts = "3"
+)
+
+
+or
+
+DefaultErrorHandler
+
+7. Error Handling
+Producer
+
+Handle send failures.
+
+kafkaTemplate.send(topic,msg)
+   .whenComplete((r,e)->{
+       if(e!=null){
+          log.error("Failed");
+       }
+   });
+
+Consumer
+DefaultErrorHandler
+DeadLetterPublishingRecoverer
+
+
+Example:
+
+@Bean
+DefaultErrorHandler errorHandler() {
+ return new DefaultErrorHandler(
+      recoverer,
+      new FixedBackOff(1000,3)
+ );
+}
+
+8. Fault Tolerance
+Producer
+
+Use:
+
+acks=all
+enable.idempotence=true
+retries=Integer.MAX_VALUE
+
+Consumer
+
+Use:
+
+Consumer groups
+Manual commits
+Retry
+DLT
+9. Performance Tuning
+Producer
+Batch Messages
+batch.size=32768
+linger.ms=10
+
+Compression
+compression.type=snappy
+
+Buffer Memory
+buffer.memory=67108864
+
+Consumer
+fetch.min.bytes=50000
+max.poll.records=1000
+
+
+Parallel processing:
+
+factory.setConcurrency(5);
+
+10. Data Consistency
+Producer
+
+Use transactions.
+
+executeInTransaction(...)
+
+Consumer
+
+Commit offset only after DB commit.
+
+saveOrder();
+ack.acknowledge();
+
+11. Reliability (Delivery Guarantees)
+Guarantee	Producer	ConsumerAt Most Once	Send	Commit first
+At Least Once	Retry	Commit after process
+Exactly Once	Transaction	Transaction
+Preferred
+
+At Least Once
+
+or
+
+Exactly Once
+
+12. Transactions (EOS)
+
+Exactly Once Semantics
+
+Producer
+enable.idempotence=true
+transactional.id=order-tx
+
+kafkaTemplate.executeInTransaction(
+   operations -> {
+      operations.send("topic",msg);
+      return true;
+   });
+
+Consumer
+isolation.level=read_committed
+
+
+Avoid reading aborted transactions.
+
+13. Monitoring & Metrics
+Producer
+
+Important Metrics
+
+Record Send Rate
+Request Latency
+Error Rate
+Retry Count
+Throughput
+
+Micrometer:
+
+management.endpoints.web.exposure.include=*
+
+Consumer
+
+Monitor:
+
+Consumer Lag
+Poll Rate
+Processing Time
+Rebalance Count
+
+Tools:
+
+Prometheus
+Grafana
+Confluent Control Center
+Burrow
+14. Security (SSL/SASL/ACL)
+Producer
+
+SSL
+
+security.protocol=SSL
+ssl.truststore.location=...
+ssl.keystore.location=...
+
+
+SASL
+
+security.protocol=SASL_SSL
+sasl.mechanism=SCRAM-SHA-512
+
+Consumer
+
+Same configuration.
+
+ACL Example
+
+Allow:
+
+Read Topic
+Write Topic
+Read Group
+
+
+Principle of Least Privilege.
+
+15. Scalability
+Producer
+
+Increase:
+
+Partitions
+Instances
+
+Example:
+
+Producer1
+Producer2
+Producer3
+
+Consumer
+Topic = 10 partitions
+Consumer Group = 10 consumers
+
+
+Parallel consumption.
+
+16. High Availability
+Producer
+acks=all
+min.insync.replicas=2
+
+
+Broker failure still safe.
+
+Consumer
+
+Consumer group reassigns partitions automatically.
+
+Consumer1 fails
+↓
+Consumer2 takes ownership
+
+17. Logging
+Producer
+
+Log:
+
+messageId
+partition
+offset
+key
+
+
+Example:
+
+log.info(
+ "Message {} sent partition {} offset {}",
+ id,
+ partition,
+ offset
+);
+
+Consumer
+
+Log:
+
+topic
+partition
+offset
+processingTime
+
+
+Useful for troubleshooting.
+
+18. Compression
+Producer
+compression.type=gzip
+
+
+Options:
+
+gzip
+snappy
+lz4
+zstd
+Consumer
+
+No configuration needed.
+
+Kafka automatically decompresses.
+
+19. Serialization / Deserialization
+Producer
+
+JSON Serializer
+
+spring.kafka.producer.value-serializer=
+org.springframework.kafka.support.serializer.JsonSerializer
+
+Avro Serializer
+value.serializer=
+io.confluent.kafka.serializers.KafkaAvroSerializer
+
+Consumer
+
+JSON
+
+spring.kafka.consumer.value-deserializer=
+org.springframework.kafka.support.serializer.JsonDeserializer
+
+
+Handle trusted packages:
+
+spring.kafka.consumer.properties.spring.json.trusted.packages=*
+
+20. Rebalancing Impact
+Producer
+
+Indirect impact.
+
+During rebalance:
+
+Consumer stops briefly
+Lag may increase
+
+Producer unaffected mostly.
+
+Consumer
+
+Major impact.
+
+Triggers:
+
+Consumer joins
+Consumer leaves
+Partition changes
+
+Mitigation
+
+Static Membership:
+
+group.instance.id=consumer-1
+
+
+Cooperative Rebalancing:
+
+partition.assignment.strategy=
+org.apache.kafka.clients.consumer.CooperativeStickyAssignor
+
+21. Timeout Configurations
+Producer
+request.timeout.ms=30000
+delivery.timeout.ms=120000
+max.block.ms=60000
+
+Consumer
+session.timeout.ms=10000
+heartbeat.interval.ms=3000
+max.poll.interval.ms=300000
+
+22. Resource Management
+Producer
+buffer.memory=67108864
+batch.size=32768
+
+
+Monitor:
+
+CPU
+Network
+Memory
+Consumer
+max.partition.fetch.bytes=1048576
+fetch.max.bytes=52428800
+
+
+Prevent OOM issues.
+
+23. Recovery from Failures
+Producer
+
+On broker recovery:
+
+retries=2147483647
+enable.idempotence=true
+
+
+Messages are retried.
+
+Consumer
+
+Recovery Strategies:
+
+Retry Topic
+@RetryableTopic
+
+DLT
+@DltHandler
+
+Offset Replay
+auto.offset.reset=earliest
+
+24. Message Validation
+Producer
+
+Validate before publishing.
+
+@Valid
+OrderCreatedEvent
+
+
+Schema validation preferred.
+
+Consumer
+
+Validation:
+
+if(order.getId()==null)
+   throw new ValidationException();
+
+
+Invalid records → DLT.
+
+25. Compatibility with Schema (Avro/Protobuf/JSON Schema)
+Producer
+
+Recommended for enterprise systems.
+
+Avro
+value.serializer=
+KafkaAvroSerializer
+
+
+Benefits:
+
+Smaller payload
+Versioning support
+Strong typing
+Protobuf
+KafkaProtobufSerializer
+
+
+Better performance.
+
+JSON Schema
+KafkaJsonSchemaSerializer
+
+
+Human readable.
+
+Consumer
+
+Use matching deserializer:
+
+KafkaAvroDeserializer
+
+
+or
+
+KafkaProtobufDeserializer
+
+Schema Evolution Rules
+Backward Compatible
+
+Add optional field.
+
+✅ Old consumer works.
+
+Forward Compatible
+
+New consumer reads old data.
+
+✅ Supported.
+
+Breaking Change
+remove mandatory field
+change field type
+
+
+❌ Avoid
+
+Production-Grade Spring Boot Kafka Recommended Settings
+Producer
+spring.kafka.producer.acks=all
+spring.kafka.producer.retries=2147483647
+spring.kafka.producer.properties.enable.idempotence=true
+spring.kafka.producer.properties.compression.type=snappy
+spring.kafka.producer.properties.linger.ms=5
+spring.kafka.producer.properties.batch.size=32768
+spring.kafka.producer.transaction-id-prefix=order-tx-
+
+Consumer
+spring.kafka.consumer.group-id=order-group
+spring.kafka.consumer.enable-auto-commit=false
+spring.kafka.consumer.auto-offset-reset=earliest
+spring.kafka.consumer.properties.isolation.level=read_committed
+
+spring.kafka.listener.ack-mode=MANUAL
+spring.kafka.listener.concurrency=5
+
+Enterprise Best Practices
+Use acks=all
+Enable idempotence
+Use manual acknowledgment
+Implement DLT
+Use Avro + Schema Registry
+Monitor consumer lag
+Enable transactions for EOS
+Use SSL/SASL
+Use compression (Snappy/ZSTD)
+Log topic, partition, offset, key, correlationId for traceability.
