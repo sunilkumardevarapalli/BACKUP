@@ -1,0 +1,280 @@
+This is the most important CQRS concept. Many people get confused about "If data is stored in Write DB, how can Read DB return it?"
+
+The answer is:
+
+Data is copied from Write DB to Read DB through events.
+
+Without CQRS
+
+Single database:
+
+Client
+   |
+POST /orders
+   |
+   v
+Orders Table
+
+101 CREATED
+
+
+Read:
+
+GET /orders/101
+
+
+directly queries:
+
+Orders Table
+
+With CQRS
+
+You have 2 databases:
+
+Write DB                    Read DB
+---------                   ---------
+Orders                      OrderView
+
+Step 1: Create Order
+
+Client:
+
+POST /orders
+
+
+Request:
+
+{
+  "orderId": 101,
+  "amount": 500
+}
+
+
+Command Service saves to Write DB:
+
+Write DB
+
+Orders
+-----------------
+101 | 500 | CREATED
+
+Step 2: Publish Event
+
+After saving:
+
+kafkaTemplate.send(
+    "order-created",
+    new OrderCreatedEvent(101,500)
+);
+
+
+Kafka gets:
+
+OrderCreated
+
+Step 3: Projection Service
+
+Listens for events:
+
+@KafkaListener(topics="order-created")
+public void process(OrderCreatedEvent event) {
+
+    OrderView view = new OrderView();
+
+    view.setOrderId(event.getOrderId());
+    view.setStatus("CREATED");
+
+    orderViewRepository.save(view);
+}
+
+Step 4: Read DB Updated
+
+Now Read DB contains:
+
+OrderView
+
+101 | CREATED
+
+
+So the data exists in both databases.
+
+Step 5: Query
+
+Client:
+
+GET /orders/101
+
+
+Query Service:
+
+@GetMapping("/{id}")
+public OrderView getOrder(
+      @PathVariable Long id){
+
+   return readRepository.findById(id)
+                        .orElseThrow();
+}
+
+
+Reads only from:
+
+Read DB
+
+
+Response:
+
+{
+   "orderId":101,
+   "status":"CREATED"
+}
+
+Visual Flow
+POST /orders
+      |
+      v
+Command Service
+      |
+      v
+Write DB
+      |
+      v
+OrderCreated Event
+      |
+      v
+Kafka
+      |
+      v
+Projection Service
+      |
+      v
+Read DB
+
+
+Then:
+
+GET /orders/101
+      |
+      v
+Query Service
+      |
+      v
+Read DB
+
+Why Have Another Database?
+
+Because the read database can be designed differently.
+
+Write DB
+
+Normalized:
+
+Orders
+OrderItems
+Payments
+Customers
+
+
+To show an order, you may need many joins.
+
+Read DB
+
+Denormalized:
+
+OrderView
+
+OrderId
+CustomerName
+Amount
+PaymentStatus
+ShippingStatus
+
+
+Everything is already combined.
+
+So queries are much faster.
+
+Example
+
+Write DB:
+
+Orders
+---------
+101
+
+Customers
+---------
+1 Sunil
+
+Payments
+---------
+101 SUCCESS
+
+
+To display an order, several tables must be joined.
+
+Read DB:
+
+OrderView
+-------------------------------
+101 | Sunil | SUCCESS | SHIPPED
+
+
+One query only:
+
+SELECT * FROM OrderView
+WHERE order_id = 101;
+
+
+Very fast.
+
+What if Read DB Doesn't Have Data Yet?
+
+Immediately after:
+
+POST /orders
+
+
+the event may not have reached Read DB.
+
+State:
+
+Write DB ✅
+
+Read DB ❌
+
+
+This is called eventual consistency.
+
+Common solutions:
+
+1. Wait a few milliseconds
+2. Retry
+3. Fallback to Write DB
+
+
+Example:
+
+OrderView view =
+        readRepository.findById(id);
+
+if(view == null){
+    return writeRepository.findById(id);
+}
+
+Simple Interview Answer
+
+In CQRS, data is first written to the Write Database. The application then publishes an event (usually via Kafka). A Projection Service consumes the event and copies/transforms the data into the Read Database. Query services retrieve data only from the Read Database, which is optimized for fast reads.
+
+Write DB
+    |
+    v
+Kafka Event
+    |
+    v
+Projection Service
+    |
+    v
+Read DB
+
+
+So the Read DB contains a synchronized copy (projection) of the data from the Write side.

@@ -1,0 +1,394 @@
+Event-Driven Architecture (EDA) with Kafka in Spring Boot Microservices
+
+In a traditional microservices architecture, services communicate synchronously using REST APIs:
+
+Order Service ---> Payment Service ---> Inventory Service
+
+
+Problems:
+
+Tight coupling
+Increased latency
+Service dependency failures
+Scalability challenges
+
+With Event-Driven Architecture, services communicate through events using Kafka.
+
+                Kafka
+                  |
+      +-----------+-----------+
+      |           |           |
+      v           v           v
+ Order MS   Payment MS   Inventory MS
+
+Real-World Example: Order Processing
+Traditional REST
+Order Service
+    |
+    +--> Payment Service
+    |
+    +--> Inventory Service
+    |
+    +--> Notification Service
+
+
+If Payment Service is down:
+
+Order Creation Fails
+
+Event-Driven
+Order Service
+    |
+    | Publish Event
+    v
+OrderCreated Event
+    |
+    v
+Kafka Topic
+    |
+    +--> Payment Service
+    |
+    +--> Inventory Service
+    |
+    +--> Notification Service
+
+
+Services work independently.
+
+Kafka Core Concepts
+Producer
+
+Publishes messages.
+
+Order Service
+
+
+Example:
+
+{
+  "orderId": 1001,
+  "userId": 101,
+  "amount": 500
+}
+
+Topic
+
+Kafka storage channel.
+
+order-created
+
+Consumer
+
+Reads messages.
+
+Payment Service
+Inventory Service
+Notification Service
+
+Event Flow
+Order Service
+     |
+     | publish
+     v
+order-created topic
+     |
+     +----------+
+     |          |
+     v          v
+ Payment    Inventory
+ Service     Service
+
+Spring Boot Kafka Implementation
+Order Service (Producer)
+Dependency
+<dependency>
+    <groupId>org.springframework.kafka</groupId>
+    <artifactId>spring-kafka</artifactId>
+</dependency>
+
+Producer Configuration
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+
+Event DTO
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class OrderCreatedEvent {
+
+    private Long orderId;
+    private Long userId;
+    private Double amount;
+}
+
+Producer Service
+@Service
+@RequiredArgsConstructor
+public class OrderProducer {
+
+    private final KafkaTemplate<String, Object> kafkaTemplate;
+
+    public void publishOrderCreatedEvent(
+            OrderCreatedEvent event) {
+
+        kafkaTemplate.send(
+                "order-created",
+                event);
+    }
+}
+
+Order Controller
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/orders")
+public class OrderController {
+
+    private final OrderProducer producer;
+
+    @PostMapping
+    public String createOrder() {
+
+        OrderCreatedEvent event =
+                new OrderCreatedEvent(
+                        1001L,
+                        101L,
+                        500.0);
+
+        producer.publishOrderCreatedEvent(event);
+
+        return "Order Created";
+    }
+}
+
+Payment Service (Consumer)
+Configuration
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: payment-group
+
+Consumer
+@Service
+public class PaymentConsumer {
+
+    @KafkaListener(
+            topics = "order-created",
+            groupId = "payment-group")
+    public void consume(
+            OrderCreatedEvent event) {
+
+        System.out.println(
+                "Payment Processing : "
+                        + event.getOrderId());
+    }
+}
+
+Inventory Service (Consumer)
+@Service
+public class InventoryConsumer {
+
+    @KafkaListener(
+            topics = "order-created",
+            groupId = "inventory-group")
+    public void consume(
+            OrderCreatedEvent event) {
+
+        System.out.println(
+                "Inventory Updated : "
+                        + event.getOrderId());
+    }
+}
+
+JSON Serialization
+
+Producer:
+
+spring:
+  kafka:
+    producer:
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+
+Consumer:
+
+spring:
+  kafka:
+    consumer:
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+Consumer Groups
+
+Suppose:
+
+Payment Instance 1
+Payment Instance 2
+Payment Instance 3
+
+
+All belong to:
+
+group-id: payment-group
+
+
+Kafka distributes messages:
+
+Message 1 -> Instance 1
+Message 2 -> Instance 2
+Message 3 -> Instance 3
+
+
+Only one consumer in the group processes a message.
+
+Multiple Services Receiving Same Event
+Topic : order-created
+
+Consumers:
+  payment-group
+  inventory-group
+  notification-group
+
+
+Each group receives the event.
+
+OrderCreated
+      |
+      +--> Payment
+      |
+      +--> Inventory
+      |
+      +--> Notification
+
+Error Handling
+Retry
+@RetryableTopic(
+    attempts = "3")
+@KafkaListener(
+        topics = "order-created")
+public void consume(
+        OrderCreatedEvent event) {
+
+    process(event);
+}
+
+Dead Letter Topic (DLT)
+
+If processing fails after retries:
+
+order-created
+      |
+      v
+Retry
+      |
+      v
+order-created-dlt
+
+
+Consumer:
+
+@DltHandler
+public void dltHandler(
+        OrderCreatedEvent event) {
+
+    log.error("Failed Event {}", event);
+}
+
+Idempotency
+
+Kafka guarantees at-least-once delivery.
+
+A message might be processed twice.
+
+Bad:
+
+Payment Executed Twice
+
+
+Solution:
+
+Store processed event IDs.
+
+if(processedEvents.contains(eventId)){
+    return;
+}
+
+Kafka with Saga Pattern
+
+Example:
+
+Order Created
+      |
+      v
+Payment Processed
+      |
+      v
+Inventory Reserved
+      |
+      v
+Notification Sent
+
+
+Failure:
+
+Inventory Failed
+      |
+      v
+Payment Refund Event
+
+
+Events:
+
+OrderCreated
+PaymentCompleted
+InventoryReserved
+InventoryFailed
+PaymentRefunded
+
+Production Architecture
+                 Kafka Cluster
+                       |
+       +---------------+---------------+
+       |               |               |
+       v               v               v
+   Order MS      Payment MS     Inventory MS
+       |               |               |
+       +---------------+---------------+
+                       |
+                 Notification MS
+
+Interview Answer
+
+Event-Driven Architecture is a microservices communication pattern where services communicate asynchronously by publishing and consuming events through a message broker like Kafka.
+
+Benefits:
+
+Loose coupling
+Better scalability
+Asynchronous processing
+Fault tolerance
+Independent deployments
+
+Spring Boot Components:
+
+KafkaTemplate → Producer
+@KafkaListener → Consumer
+Kafka Topics → Event channels
+Consumer Groups → Load balancing
+Dead Letter Topics → Failed messages
+Retry + Idempotency → Reliability
+Saga Pattern → Distributed transaction management
+
+A common enterprise flow is:
+
+Order Service
+    -> OrderCreated Event
+    -> Kafka
+    -> Payment Service
+    -> Inventory Service
+    -> Notification Service
+
+
+where services react to events rather than directly calling each other.

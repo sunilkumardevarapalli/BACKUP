@@ -1,0 +1,317 @@
+The Aggregator Design Pattern in microservices is used when a client needs data from multiple microservices, but you want to expose a single API.
+
+Instead of:
+
+Client
+  ├── User Service
+  ├── Order Service
+  └── Payment Service
+
+
+the client calls one endpoint:
+
+Client
+   |
+   v
+Aggregator Service
+   |
+   +--> User Service
+   +--> Order Service
+   +--> Payment Service
+
+
+The aggregator collects responses from all services and returns a combined response.
+
+Example Use Case
+
+Suppose you need a customer dashboard:
+
+{
+  "userId": 101,
+  "name": "Sunil",
+  "orders": [
+    {
+      "orderId": 1,
+      "amount": 500
+    }
+  ],
+  "payments": [
+    {
+      "paymentId": 10,
+      "status": "SUCCESS"
+    }
+  ]
+}
+
+
+Data resides in:
+
+User Service
+Order Service
+Payment Service
+User Service
+@RestController
+@RequestMapping("/users")
+public class UserController {
+
+    @GetMapping("/{id}")
+    public User getUser(@PathVariable Long id) {
+
+        return new User(id, "Sunil");
+    }
+}
+
+Order Service
+@RestController
+@RequestMapping("/orders")
+public class OrderController {
+
+    @GetMapping("/user/{userId}")
+    public List<Order> getOrders(
+            @PathVariable Long userId) {
+
+        return List.of(
+                new Order(1L, 500.0),
+                new Order(2L, 1000.0));
+    }
+}
+
+Payment Service
+@RestController
+@RequestMapping("/payments")
+public class PaymentController {
+
+    @GetMapping("/user/{userId}")
+    public List<Payment> getPayments(
+            @PathVariable Long userId) {
+
+        return List.of(
+                new Payment(10L, "SUCCESS"));
+    }
+}
+
+Aggregator Service
+DTO
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class CustomerDashboard {
+
+    private User user;
+    private List<Order> orders;
+    private List<Payment> payments;
+}
+
+WebClient Configuration
+@Configuration
+public class WebClientConfig {
+
+    @Bean
+    public WebClient webClient() {
+        return WebClient.builder().build();
+    }
+}
+
+Service Layer
+@Service
+public class DashboardService {
+
+    @Autowired
+    private WebClient webClient;
+
+    public CustomerDashboard getDashboard(Long userId) {
+
+        User user =
+            webClient.get()
+                .uri("http://localhost:8081/users/" + userId)
+                .retrieve()
+                .bodyToMono(User.class)
+                .block();
+
+        List<Order> orders =
+            webClient.get()
+                .uri("http://localhost:8082/orders/user/" + userId)
+                .retrieve()
+                .bodyToFlux(Order.class)
+                .collectList()
+                .block();
+
+        List<Payment> payments =
+            webClient.get()
+                .uri("http://localhost:8083/payments/user/" + userId)
+                .retrieve()
+                .bodyToFlux(Payment.class)
+                .collectList()
+                .block();
+
+        return new CustomerDashboard(
+                user,
+                orders,
+                payments);
+    }
+}
+
+Controller
+@RestController
+@RequestMapping("/dashboard")
+public class DashboardController {
+
+    @Autowired
+    private DashboardService dashboardService;
+
+    @GetMapping("/{userId}")
+    public CustomerDashboard getDashboard(
+            @PathVariable Long userId) {
+
+        return dashboardService
+                .getDashboard(userId);
+    }
+}
+
+
+Request:
+
+GET /dashboard/101
+
+
+Response:
+
+{
+  "user": {
+    "id": 101,
+    "name": "Sunil"
+  },
+  "orders": [
+    {
+      "orderId": 1,
+      "amount": 500
+    }
+  ],
+  "payments": [
+    {
+      "paymentId": 10,
+      "status": "SUCCESS"
+    }
+  ]
+}
+
+Better Version: Parallel Calls
+
+Instead of sequential calls, call services concurrently using Mono.zip().
+
+public Mono<CustomerDashboard> getDashboard(
+        Long userId) {
+
+    Mono<User> userMono =
+        webClient.get()
+            .uri("http://localhost:8081/users/" + userId)
+            .retrieve()
+            .bodyToMono(User.class);
+
+    Mono<List<Order>> orderMono =
+        webClient.get()
+            .uri("http://localhost:8082/orders/user/" + userId)
+            .retrieve()
+            .bodyToFlux(Order.class)
+            .collectList();
+
+    Mono<List<Payment>> paymentMono =
+        webClient.get()
+            .uri("http://localhost:8083/payments/user/" + userId)
+            .retrieve()
+            .bodyToFlux(Payment.class)
+            .collectList();
+
+    return Mono.zip(
+            userMono,
+            orderMono,
+            paymentMono)
+        .map(tuple -> new CustomerDashboard(
+                tuple.getT1(),
+                tuple.getT2(),
+                tuple.getT3()));
+}
+
+
+Benefits:
+
+Faster response
+Non-blocking
+Better scalability
+Using Eureka Service Discovery
+
+Instead of hardcoded URLs:
+
+http://localhost:8081
+
+
+use service names:
+
+http://USER-SERVICE
+http://ORDER-SERVICE
+http://PAYMENT-SERVICE
+
+
+Configure load-balanced WebClient:
+
+@Bean
+@LoadBalanced
+public WebClient.Builder webClientBuilder() {
+    return WebClient.builder();
+}
+
+
+Usage:
+
+webClientBuilder.build()
+      .get()
+      .uri("http://USER-SERVICE/users/" + userId)
+      .retrieve()
+      .bodyToMono(User.class);
+
+Aggregator vs API Gateway
+API Gateway
+
+Handles:
+
+Routing
+JWT Authentication
+Rate Limiting
+Logging
+Service Discovery
+Client
+   |
+API Gateway
+   |
+Microservices
+
+Aggregator
+
+Handles:
+
+Combining data from multiple services
+Business composition
+Client
+   |
+Aggregator Service
+   |
++------+-------+
+|      |       |
+User  Order  Payment
+
+Production Design
+Client
+   |
+API Gateway
+   |
+Dashboard Aggregator
+   |
++--------+---------+---------+
+|        |         |         |
+User   Order    Payment   Inventory
+Service Service  Service   Service
+
+
+A common interview answer:
+
+API Gateway handles cross-cutting concerns (routing, auth, rate limiting), while an Aggregator Service composes data from multiple microservices and returns a unified response to the client. In Spring Boot, Aggregator is typically implemented using WebClient and service discovery through Eureka.

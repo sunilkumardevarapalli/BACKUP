@@ -1,0 +1,265 @@
+
+
+Microservices design patterns are solutions for 
+
+	building scalable, 
+	resilient, 
+	maintainable,
+	distributed applications.
+	
+1. Decomposition Patterns:
+
+	These patterns help break a monolithic application into microservices.
+
+	| Pattern                              | Description                                                             |
+	| ------------------------------------ | ----------------------------------------------------------------------- |
+	| **Decompose by Business Capability** | Split services based on business functions (Order, Payment, Inventory). |
+	| **Decompose by Subdomain (DDD)**     | Split services using Domain-Driven Design bounded contexts.             |
+	| **Strangler Fig Pattern**            | Gradually replace a monolith with microservices.                        |
+
+2. Communication Patterns:
+
+	These define how microservices communicate.
+
+	| Pattern                             | Description                                             |
+	| ----------------------------------- | ------------------------------------------------------- |
+	| **API Gateway**                     | Single entry point for all client requests.             |
+	| **Aggregator Pattern**              | Combines data from multiple services into one response. |
+	| **Backend for Frontend (BFF)**      | Separate backend APIs for Web, Mobile, etc.             |
+	| **Event-Driven Architecture (EDA)** | Services communicate asynchronously through events.     |
+	| **Request-Reply**                   | One service requests data and waits for a response.     |
+	| **Publish-Subscribe (Pub/Sub)**     | One publisher sends events to multiple subscribers.     |
+
+3. Data Management Patterns
+
+	These manage data across distributed services.
+	
+	| Pattern                                             | Description                                                |
+	| --------------------------------------------------- | ---------------------------------------------------------- |
+	| **Database per Service**                            | Each service owns its own database.                        |
+	| **Saga Pattern**                                    | Manages distributed transactions without two-phase commit. |
+	| **CQRS (Command Query Responsibility Segregation)** | Separates read and write operations.                       |
+	| **Event Sourcing**                                  | Stores every state change as immutable events.             |
+	| **Shared Database (Not Recommended)**               | Multiple services use the same database.                   |
+	
+4. Reliability & Resilience Patterns
+
+	These improve fault tolerance.
+	
+	| Pattern              | Description                                               |
+	| -------------------- | --------------------------------------------------------- |
+	| **Circuit Breaker**  | Stops repeated calls to failing services.                 |
+	| **Retry Pattern**    | Retries failed operations.                                |
+	| **Timeout Pattern**  | Limits how long a service waits for a response.           |
+	| **Bulkhead Pattern** | Isolates failures so one component doesn't affect others. |
+	| **Fallback Pattern** | Returns a default response when a service fails.          |
+	| **Rate Limiter**     | Restricts excessive requests.                             |
+	
+5. Deployment Patterns
+
+	These simplify deployment and upgrades.	
+		
+	| Pattern                   | Description                                                               |
+	| ------------------------- | ------------------------------------------------------------------------- |
+	| **Blue-Green Deployment** | Switch traffic between two production environments.                       |
+	| **Canary Deployment**     | Release a new version to a small percentage of users first.               |
+	| **Rolling Deployment**    | Update service instances gradually.                                       |
+	| **Sidecar Pattern**       | Run helper functionality (logging, proxy, monitoring) beside the service. |
+	| **Ambassador Pattern**    | Proxy that manages outbound communication.                                |
+	| **Adapter Pattern**       | Adapts legacy or external systems to the service interface.               |
+	
+6. Discovery Patterns
+
+	These help services locate each other.
+
+	| Pattern                           | Description                                  |
+	| --------------------------------- | -------------------------------------------- |
+	| **Client-Side Service Discovery** | Client discovers service instances.          |
+	| **Server-Side Service Discovery** | Load balancer or gateway discovers services. |
+	| **Service Registry**              | Maintains available service instances.       |
+	
+7. Observability Patterns
+
+	These make distributed systems easier to monitor.	
+
+	| Pattern                  | Description                                   |
+	| ------------------------ | --------------------------------------------- |
+	| **Distributed Tracing**  | Tracks requests across services.              |
+	| **Centralized Logging**  | Aggregates logs in one place.                 |
+	| **Health Check Pattern** | Reports service health.                       |
+	| **Metrics & Monitoring** | Collects performance and operational metrics. |
+
+8. Security Patterns
+
+	These secure communication and access.
+	
+| Pattern                        | Description                                   |
+| ------------------------------ | --------------------------------------------- |
+| **API Gateway Authentication** | Centralized authentication and authorization. |
+| **OAuth2 / JWT**               | Token-based authentication.                   |
+| **mTLS (Mutual TLS)**          | Secure service-to-service communication.      |
+
+9. Integration Patterns
+
+	These integrate microservices with external systems.
+	
+| Pattern                       | Description                                                    |
+| ----------------------------- | -------------------------------------------------------------- |
+| **Outbox Pattern**            | Reliably publishes events after database commits.              |
+| **Inbox Pattern**             | Prevents duplicate message processing.                         |
+| **Transactional Outbox**      | Ensures database updates and event publishing stay consistent. |
+| **Change Data Capture (CDC)** | Publishes database changes as events.                          |
+
+Commonly Asked Interview Patterns
+
+These are the patterns most frequently discussed in microservices interviews:
+
+
+1. API Gateway
+2. Aggregator
+3. Event-Driven Architecture
+4. Saga
+5. CQRS
+6. Event Sourcing
+7. Circuit Breaker
+8. Retry
+9. Bulkhead
+10. Database per Service
+11. Service Discovery
+12. Sidecar
+13. Strangler Fig
+14. Outbox Pattern
+15. Backend for Frontend (BFF)
+
+---
+
+# Where They Fit in a Typical Architecture
+
+```text
+                    Client
+                       │
+                       ▼
+                 API Gateway
+                       │
+        ┌──────────────┼──────────────┐
+        ▼              ▼              ▼
+   Order Service  Payment Service  Inventory Service
+        │              │              │
+        ├──────► Database per Service │
+        │              │              │
+        ├──── Publish Events (Kafka) ─┤
+        │              │              │
+        ▼              ▼              ▼
+     Saga         Event Sourcing    CQRS
+        │
+        ▼
+  Circuit Breaker / Retry / Bulkhead
+        │
+        ▼
+ Monitoring / Logging / Tracing
+```
+
+## For Java + Spring Boot + Kafka interviews
+
+The most important patterns to master are:
+
+* **API Gateway**
+* **Aggregator**
+* **Event-Driven Architecture (Kafka)**
+* **Saga Pattern (Orchestration & Choreography)**
+* **CQRS**
+* **Event Sourcing**
+* **Outbox Pattern**
+* **Circuit Breaker (Resilience4j)**
+* **Retry & Fallback**
+* **Bulkhead**
+* **Database per Service**
+* **Service Discovery (Eureka/Consul)**
+* **Distributed Tracing and Centralized Logging**
+
+These patterns form the foundation of most production-grade microservices architectures and are commonly expected in senior Java microservices interviews.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

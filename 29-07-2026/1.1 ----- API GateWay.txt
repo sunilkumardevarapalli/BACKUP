@@ -1,0 +1,372 @@
+
+
+Client
+   |
+   v
++-------------------+
+|   API Gateway     |
+| Spring Cloud GW   |
++-------------------+
+      |
+      +----------------+
+      |                |
+      v                v
++-----------+    +-----------+
+| User MS   |    |Order MS   |
+| Port 8081 |    | Port 8082 |
++-----------+    +-----------+
+
+<dependency>
+
+	<groupId>org.springframework.cloud</groupId>
+
+	<artifactId>spring-cloud-starter-gateway</artifactId>
+	
+	<artifactId>spring-cloud-starter-loadbalancer</artifactId>
+
+</dependency>
+
+2. API Gateway Configuration
+
+This configuration means API Gateway is working without any Service Registry (Eureka/Consul).
+
+1. No Dynamic Discovery
+
+If User Service moves from:8081 to 8089 then need to configure change and deploye it again.
+No Load Balancing: Gateway knows only one port
+
+With Eureka; insted of this uri: http://localhost:8081  use this uri: lb://USER-SERVICE
+
+Eureka returns:
+
+USER-SERVICE
+  -> 8081
+  -> 8083
+  -> 8084
+
+		server:
+		  port: 8080
+
+		spring:
+		  cloud:
+			gateway:
+			  routes:
+				- id: user-service
+				  uri: http://localhost:8081
+				  predicates:
+					- Path=/users/**
+
+				- id: order-service
+				  uri: http://localhost:8082
+				  predicates:
+					- Path=/orders/**
+					
+First Checks predicates
+
+		Client
+		  |
+		  | GET /users/101
+		  v
+
+		API Gateway (8080)
+		  |
+		  | Predicate Check
+		  | Path=/users/**
+		  | Match ✅
+		  v
+
+		User Service (8081)
+		  |
+		  v
+
+		Response
+
+if we use load balancer:	
+
+		Request
+		   |
+		   v
+		Predicate Match (/users/**)
+		   |
+		   v
+		Gateway asks Eureka:
+		"Give me USER-SERVICE instances"
+		   |
+		   v
+		8081, 8083, 8084
+		   |
+		   v
+		LoadBalancer selects one instance
+		   |
+		   v
+		Request forwarded
+		``	
+Service Discovery (Recommended)
+
+Instead of hardcoding URLs, use Eureka Server.
+
+at API Gate Way service:
+
+	<dependency>
+		<groupId>org.springframework.cloud</groupId>
+		<artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+	</dependency>
+
+Gateway routing:
+
+	spring:
+	  cloud:
+		gateway:
+		  routes:
+			- id: user-service
+			  uri: lb://USER-SERVICE
+			  predicates:
+				- Path=/users/**
+
+			- id: order-service
+			  uri: lb://ORDER-SERVICE
+			  predicates:
+				- Path=/orders/**
+				
+				
+Microservices register themselves:
+
+		spring:
+		  application:
+			name: USER-SERVICE
+
+		eureka:
+		  client:
+			service-url:
+			  defaultZone: http://localhost:8761/eureka/	
+			  
+
+With Eureka; insted of this uri: http://localhost:8081  use this uri: lb://USER-SERVICE
+
+Eureka returns:
+
+USER-SERVICE
+  -> 8081
+  -> 8083
+  -> 8084
+
+1. Eureka Server:
+
+Step 1:
+
+	<dependency>
+		<groupId>org.springframework.cloud</groupId>
+		<artifactId>spring-cloud-starter-netflix-eureka-server</artifactId>
+	</dependency>
+Step 2:
+
+	@SpringBootApplication
+	@EnableEurekaServer
+	public class EurekaServerApplication {
+
+		public static void main(String[] args) {
+			SpringApplication.run(EurekaServerApplication.class, args);
+		}
+	}
+
+Step 3:
+
+	application.yml
+
+	server:
+	  port: 8761
+
+	eureka:
+	  client:
+		register-with-eureka: false
+		fetch-registry: false
+		
+2. User Service - Instance 1	
+	
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+</dependency>
+
+	server:
+	  port: 8081
+
+	spring:
+	  application:
+		name: USER-SERVICE
+
+	eureka:
+	  client:
+		service-url:
+		  defaultZone: http://localhost:8761/eureka/
+	
+		
+java -jar user-service.jar --spring.profiles.active=8083
+java -jar user-service.jar --spring.profiles.active=8084
+
+Verify in Eureka Dashboard
+
+http://localhost:8761
+
+6. Configure Gateway
+
+The gateway does not need to know individual ports.
+
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: user-service
+          uri: lb://USER-SERVICE
+          predicates:
+            - Path=/users/**
+			
+lb:// means:Ask Eureka for USER-SERVICE instances
+
+Eureka returns:
+
+
+8081
+8083
+8084
+
+Spring Cloud LoadBalancer picks one instance.
+
+Request 1 -> 8081
+Request 2 -> 8083
+Request 3 -> 8084
+Request 4 -> 8081
+
+
+7. Running Multiple Instances Without Profiles
+
+You can start the same jar multiple times:
+
+java -jar user-service.jar --server.port=8081
+
+java -jar user-service.jar --server.port=8083
+
+java -jar user-service.jar --server.port=8084		
+
+Common Eureka config:
+spring:
+  application:
+    name: USER-SERVICE
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+	  
+Note1: if we run below commands then we need 3 configuration files required in user-service 
+
+	application.yml
+	application-8081.yml
+	application-8083.yml
+	application-8084.yml
+
+		java -jar user-service.jar --spring.profiles.active=8081
+
+		java -jar user-service.jar --spring.profiles.active=8083
+
+		java -jar user-service.jar --spring.profiles.active=8084
+
+
+		application.yml
+
+		spring:
+		  application:
+			name: USER-SERVICE
+
+		eureka:
+		  client:
+			service-url:
+			  defaultZone: http://localhost:8761/eureka/
+			  
+		application-8081.yml
+
+		server:
+		  port: 8081
+		  
+Note: if we run like below then only one application.yml file is fine
+
+		java -jar user-service.jar --server.port=8081
+
+		java -jar user-service.jar --server.port=8083
+
+		java -jar user-service.jar --server.port=8084		  
+
+		and override the port when starting:
+
+		server:
+		  port: 8081
+
+		spring:
+		  application:
+			name: USER-SERVICE
+
+		eureka:
+		  client:
+			service-url:
+			  defaultZone: http://localhost:8761/eureka/
+
+
+		server:
+		  port: 8081
+
+		spring:
+		  application:
+			name: USER-SERVICE
+
+		eureka:
+		  client:
+			service-url:
+			  defaultZone: http://localhost:8761/eureka/
+			  
+In this approach:
+
+✅ Only one application.yml is needed.
+ ✅ No application-8081.yml, application-8083.yml, application-8084.yml files.
+ ✅ Eureka registers all three instances automatically.
+
+For local development and interviews, the --server.port= approach is usually the simplest and most commonly used.
+
+uri: http://localhost:8081 → only one instance, no service discovery.
+uri: lb://USER-SERVICE → Eureka lookup + load balancing across 8081, 8083, 8084.			  
+	  
+
+
+
+
+
+
+
+
+
+			  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+				
+				
+				
+		
+		
+		
+		
+		

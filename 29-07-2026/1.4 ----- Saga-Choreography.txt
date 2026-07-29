@@ -1,0 +1,285 @@
+In Saga Choreography, there is no central coordinator. Each service:
+
+Consumes an event
+Performs its business logic
+Publishes the next event
+
+Flow:
+
+Order Service
+    |
+    | OrderCreated
+    v
+Payment Service
+    |
+    | PaymentCompleted
+    v
+Inventory Service
+    |
+    | InventoryReserved
+    v
+Shipping Service
+
+Step 1: Order Service
+Publish OrderCreated
+Event
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class OrderCreatedEvent {
+
+    private Long orderId;
+    private Long productId;
+    private Double amount;
+}
+
+Producer
+@Service
+@RequiredArgsConstructor
+public class OrderProducer {
+
+    private final KafkaTemplate<String, Object> kafkaTemplate;
+
+    public void publish(OrderCreatedEvent event) {
+
+        kafkaTemplate.send(
+                "order-created",
+                event);
+    }
+}
+
+Controller
+@PostMapping
+public String createOrder() {
+
+    OrderCreatedEvent event =
+            new OrderCreatedEvent(
+                    1001L,
+                    101L,
+                    500.0);
+
+    orderProducer.publish(event);
+
+    return "Order Created";
+}
+
+Step 2: Payment Service
+
+Consumes:
+
+order-created
+
+
+Processes payment.
+
+Publishes:
+
+payment-completed
+
+Event
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class PaymentCompletedEvent {
+
+    private Long orderId;
+    private String paymentStatus;
+}
+
+Consumer
+@Service
+@RequiredArgsConstructor
+public class PaymentConsumer {
+
+    private final KafkaTemplate<String,Object> kafkaTemplate;
+
+    @KafkaListener(
+            topics = "order-created",
+            groupId = "payment-group")
+    public void processPayment(
+            OrderCreatedEvent event) {
+
+        System.out.println(
+                "Processing payment");
+
+        // payment success
+
+        PaymentCompletedEvent paymentEvent =
+                new PaymentCompletedEvent(
+                        event.getOrderId(),
+                        "SUCCESS");
+
+        kafkaTemplate.send(
+                "payment-completed",
+                paymentEvent);
+    }
+}
+
+Step 3: Inventory Service
+
+Consumes:
+
+payment-completed
+
+
+Not:
+
+order-created
+
+
+This guarantees inventory starts only after payment.
+
+Event
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class InventoryReservedEvent {
+
+    private Long orderId;
+    private Long productId;
+}
+
+Consumer
+@Service
+@RequiredArgsConstructor
+public class InventoryConsumer {
+
+    private final KafkaTemplate<String,Object> kafkaTemplate;
+
+    @KafkaListener(
+            topics = "payment-completed",
+            groupId = "inventory-group")
+    public void reserveInventory(
+            PaymentCompletedEvent event) {
+
+        System.out.println(
+                "Reserving inventory");
+
+        InventoryReservedEvent inventoryEvent =
+                new InventoryReservedEvent(
+                        event.getOrderId(),
+                        101L);
+
+        kafkaTemplate.send(
+                "inventory-reserved",
+                inventoryEvent);
+    }
+}
+
+Step 4: Shipping Service
+
+Consumes:
+
+inventory-reserved
+
+Consumer
+@Service
+public class ShippingConsumer {
+
+    @KafkaListener(
+            topics = "inventory-reserved",
+            groupId = "shipping-group")
+    public void shipProduct(
+            InventoryReservedEvent event) {
+
+        System.out.println(
+                "Shipping Order : "
+                + event.getOrderId());
+    }
+}
+
+Event Flow
+Order Service
+    |
+    | OrderCreated
+    v
+Kafka(order-created)
+    |
+    v
+Payment Service
+    |
+    | PaymentCompleted
+    v
+Kafka(payment-completed)
+    |
+    v
+Inventory Service
+    |
+    | InventoryReserved
+    v
+Kafka(inventory-reserved)
+    |
+    v
+Shipping Service
+
+Failure Handling (Compensation)
+
+Suppose:
+
+Payment Success ✅
+Inventory Failed ❌
+
+
+Inventory service publishes:
+
+public class InventoryFailedEvent {
+
+    private Long orderId;
+}
+
+kafkaTemplate.send(
+    "inventory-failed",
+    new InventoryFailedEvent(orderId));
+
+
+Payment service listens:
+
+@KafkaListener(
+    topics = "inventory-failed")
+public void refund(
+        InventoryFailedEvent event) {
+
+    // refund payment
+
+    kafkaTemplate.send(
+        "payment-refunded",
+        event);
+}
+
+
+Flow:
+
+OrderCreated
+      |
+PaymentCompleted
+      |
+InventoryFailed
+      |
+PaymentRefunded
+
+
+This is called a compensating transaction.
+
+Kafka Topics
+order-created
+payment-completed
+inventory-reserved
+inventory-failed
+payment-refunded
+shipping-completed
+
+Interview Answer
+
+In Saga Choreography, each microservice listens to an event, performs its local transaction, and publishes the next event. No central orchestrator exists.
+
+Example:
+
+OrderCreated
+    -> Payment Service
+       -> PaymentCompleted
+           -> Inventory Service
+              -> InventoryReserved
+                  -> Shipping Service
+
+
+If a service fails, it publishes a failure event such as InventoryFailed, and previously completed services execute compensating actions like PaymentRefunded. This maintains eventual consistency across microservices.
