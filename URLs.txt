@@ -1,0 +1,14 @@
+
+
+Git Hub Actions: https://www.youtube.com/watch?v=G3z0s7OdzFQ
+
+https://www.youtube.com/watch?v=w4c_NIjO3XI
+
+1. Resilience - how to maintain resilience between 2 micro services? Need to justify your choice
+2. How achieve Idempotency
+3. How maintain concuurency in a multi threaded environment, the threads are virtual, you have to provide the design
+4. How to analyze memory leak?
+5. How to find optimal value for a database connection for a spring boot application
+6. How to analyze a database connection leak?
+7. How to make read operation optimal for a database with 50 million reacords
+8. How to maintain error records in a spring batch
