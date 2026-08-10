@@ -1,0 +1,113 @@
+🧠 Final Memory Map
+
+You can remember the 15 approaches like this:
+
+MULTIPLE DATABASES
+        │
+        ├── 1. DataSources
+        ├── 2. JdbcTemplate
+        ├── 3. EntityManagers
+        ├── 4. TransactionManagers
+        ├── 5. Repositories
+        │
+        ├── 6. Routing DataSource
+        ├── 7. AbstractRoutingDataSource
+        ├── 8. Multi-Tenancy
+        │
+        ├── 9. Read / Write
+        ├── 10. DB per Microservice
+        ├── 11. Dynamic DataSource
+        │
+        ├── 12. Sharding
+        ├── 13. Polyglot Persistence
+        ├── 14. JPA + JDBC
+        └── 15. Named DataSources
+
+
+1) Data Source --> JdbcTemplate
+
+2) 
+	DataSource
+	   ↓
+	EntityManagerFactory
+	   ↓
+	TransactionManager
+	   ↓
+	Repository
+		
+	@Service
+	public class OrderService {
+
+		@Transactional("orderTransactionManager")
+		public void saveOrder() {
+
+			// Order DB transaction
+		}
+	}
+
+	@Service
+	public class CustomerService {
+
+		@Transactional("customerTransactionManager")
+		public void saveCustomer() {
+
+			// Customer DB transaction
+		}
+	}
+	
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

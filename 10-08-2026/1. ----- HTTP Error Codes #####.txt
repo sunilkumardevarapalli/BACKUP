@@ -1,0 +1,1329 @@
+
+
+1xx = Informational
+2xx = Success
+3xx = Redirection
+4xx = Client Error
+5xx = Server Error
+
+| Class   | Meaning       | Basic Idea                                                                                       |
+| ------- | ------------- | ------------------------------------------------------------------------------------------------ |
+| **1xx** | Informational | Request received, continue processing                                                            |
+| **2xx** | Success       | Request successfully processed/accepted                                                          |
+| **3xx** | Redirection   | Client needs to take another action, usually follow a different URL or use cached data           |
+| **4xx** | Client Error  | The request is invalid or cannot be fulfilled because of something related to the client/request |
+| **5xx** | Server Error  | Server failed to successfully fulfill a valid request                                            |
+| **6xx** | Non-standard  | Not part of the standard HTTP status-code classes                                                |
+
+
+Yes. In a Spring Boot REST API, **`1xx Informational`** responses are different from `2xx`, `4xx`, and `5xx`.
+
+The key idea is:
+
+> **`1xx` means the server is providing an intermediate response about the request. The final result of the request has not been returned yet.**
+
+However, there is an important practical point:
+
+**You normally do not return `1xx` responses directly from a Spring Boot `@RestController`.** Most `1xx` responses are handled automatically by the HTTP server/container, client, or framework.
+
+---
+
+# 1. What does `1xx Informational` mean?
+
+HTTP status codes are divided into classes:
+
+| Range   | Class         | Meaning                                |
+| ------- | ------------- | -------------------------------------- |
+| **1xx** | Informational | Request received; processing continues |
+| **2xx** | Success       | Request successfully completed         |
+| **3xx** | Redirection   | Client needs additional action         |
+| **4xx** | Client Error  | Problem with the request               |
+| **5xx** | Server Error  | Server failed to fulfill the request   |
+
+For `1xx`:
+
+```text
+Client
+   |
+   | HTTP Request
+   v
+Server
+   |
+   | 1xx Informational
+   | "I'm still processing / continue"
+   v
+Client
+   |
+   | Wait for final response
+   v
+Server
+   |
+   | 2xx / 3xx / 4xx / 5xx
+   v
+Final Response
+```
+
+So **1xx is not normally the final response**.
+
+---
+
+# 2. Important `1xx` status codes
+
+The important standard codes include:
+
+| Code                        | Meaning                                | Typical Purpose                                   |
+| --------------------------- | -------------------------------------- | ------------------------------------------------- |
+| **100 Continue**            | Client should continue sending request | Large request body / `Expect: 100-continue`       |
+| **101 Switching Protocols** | Server agrees to switch protocols      | WebSocket / protocol upgrade                      |
+| **102 Processing**          | Server is processing request           | WebDAV; intermediate processing                   |
+| **103 Early Hints**         | Provides preliminary headers           | Send preload/resource hints before final response |
+
+Let's understand each one from a **Spring Boot controller perspective**.
+
+---
+
+# 3. `100 Continue`
+
+## Meaning
+
+`100 Continue` tells the client:
+
+> **"I received your request headers. You can continue sending the request body."**
+
+This is useful when the request body is potentially large.
+
+For example:
+
+```text
+Client
+   |
+   | POST /api/upload
+   | Expect: 100-continue
+   |
+   v
+Server
+   |
+   | 100 Continue
+   |
+   v
+Client
+   |
+   | Send large request body
+   |
+   v
+Server
+   |
+   | Process request
+   |
+   v
+201 Created
+```
+
+---
+
+# 4. Why would we need `100 Continue`?
+
+Imagine the client wants to upload a **500 MB file**.
+
+Without `100 Continue`:
+
+```text
+Client
+   |
+   | Send 500 MB
+   v
+Server
+   |
+   X
+   | "You are not authorized"
+   |
+   v
+401 Unauthorized
+```
+
+The client unnecessarily uploaded 500 MB.
+
+With `100 Continue`:
+
+```text
+Client
+   |
+   | Headers
+   | Expect: 100-continue
+   v
+Server
+   |
+   | Check headers/authentication
+   |
+   | 100 Continue
+   v
+Client
+   |
+   | Send 500 MB
+   v
+Server
+```
+
+This can prevent unnecessary transmission of a large request body.
+
+---
+
+# 5. Can I return `100 Continue` from a Spring Controller?
+
+Normally, **you should not do this**.
+
+For example, don't normally write:
+
+```java
+@PostMapping("/upload")
+public ResponseEntity<?> upload() {
+
+    return ResponseEntity
+            .status(HttpStatus.CONTINUE)
+            .build();
+}
+```
+
+Why?
+
+Because:
+
+```java
+HttpStatus.CONTINUE
+```
+
+represents an **interim response**, not the final result of your controller operation.
+
+Your controller should normally return the **final response**, such as:
+
+```java
+return ResponseEntity.ok().build();
+```
+
+or:
+
+```java
+return ResponseEntity.status(HttpStatus.CREATED).build();
+```
+
+The underlying HTTP server/container can handle the `100 Continue` mechanism.
+
+---
+
+# 6. What happens inside Spring Boot?
+
+Suppose you have:
+
+```java
+@RestController
+@RequestMapping("/api/files")
+public class FileController {
+
+    @PostMapping("/upload")
+    public ResponseEntity<String> upload(
+            @RequestBody byte[] data) {
+
+        System.out.println("Processing file...");
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body("File uploaded successfully");
+    }
+}
+```
+
+The client may send:
+
+```http
+POST /api/files/upload HTTP/1.1
+Host: example.com
+Content-Length: 500000000
+Expect: 100-continue
+```
+
+The HTTP server/container may handle the `100 Continue` interaction.
+
+Your controller eventually handles the request and returns:
+
+```http
+201 Created
+```
+
+The controller is concerned primarily with the **final application response**, not manually managing the interim `100`.
+
+---
+
+# 7. `101 Switching Protocols`
+
+This one is more interesting for real-time applications.
+
+## Meaning
+
+`101` means:
+
+> **"I agree to switch from the current HTTP protocol to another protocol."**
+
+A common example is **WebSocket**.
+
+---
+
+# 8. HTTP → WebSocket
+
+Normally:
+
+```text
+Client
+   |
+   | HTTP request
+   v
+Spring Boot
+   |
+   | HTTP response
+   v
+Client
+```
+
+With WebSocket:
+
+```text
+Client
+   |
+   | HTTP Upgrade Request
+   |
+   | Upgrade: websocket
+   v
+Server
+   |
+   | 101 Switching Protocols
+   |
+   v
+WebSocket Connection
+   |
+   | <-------------------->
+   | Real-time communication
+   | <-------------------->
+```
+
+The client might send:
+
+```http
+GET /chat HTTP/1.1
+Upgrade: websocket
+Connection: Upgrade
+```
+
+The server responds:
+
+```http
+HTTP/1.1 101 Switching Protocols
+Upgrade: websocket
+Connection: Upgrade
+```
+
+After that, communication uses the WebSocket protocol.
+
+---
+
+# 9. Spring Boot WebSocket example
+
+You generally **do not manually return `101` from a REST controller**.
+
+Instead, you configure WebSocket support.
+
+For example:
+
+```java
+@Configuration
+@EnableWebSocket
+public class WebSocketConfig implements WebSocketConfigurer {
+
+    @Override
+    public void registerWebSocketHandlers(
+            WebSocketHandlerRegistry registry) {
+
+        registry.addHandler(
+                new ChatWebSocketHandler(),
+                "/chat"
+        );
+    }
+}
+```
+
+Handler:
+
+```java
+@Component
+public class ChatWebSocketHandler
+        extends TextWebSocketHandler {
+
+    @Override
+    public void handleTextMessage(
+            WebSocketSession session,
+            TextMessage message)
+            throws Exception {
+
+        System.out.println(
+                "Message: " + message.getPayload()
+        );
+
+        session.sendMessage(
+                new TextMessage("Message received")
+        );
+    }
+}
+```
+
+The WebSocket infrastructure handles the protocol upgrade.
+
+So don't normally write:
+
+```java
+return ResponseEntity
+        .status(HttpStatus.SWITCHING_PROTOCOLS)
+        .build();
+```
+
+for a normal WebSocket implementation.
+
+---
+
+# 10. `102 Processing`
+
+`102 Processing` is primarily associated with **WebDAV**.
+
+Its meaning is approximately:
+
+> **"I received your request and I'm still processing it; don't assume the request has timed out."**
+
+Imagine a very long-running operation:
+
+```text
+Client
+   |
+   | Request
+   v
+Server
+   |
+   | 102 Processing
+   |
+   | Processing...
+   |
+   | Processing...
+   |
+   | Processing...
+   |
+   v
+Final response
+```
+
+The important point is:
+
+```text
+102 ≠ Success
+```
+
+It means processing is still happening.
+
+---
+
+# 11. Can we use `102` for Spring Batch?
+
+You might think:
+
+```text
+POST /batch/start
+
+102 Processing
+```
+
+But this is **not the normal REST approach**.
+
+For a long-running Spring Batch job, a better API design is usually:
+
+```text
+POST /jobs
+       |
+       v
+202 Accepted
+       |
+       v
+{
+    "jobId": "12345",
+    "status": "STARTED"
+}
+```
+
+Then the client can query:
+
+```text
+GET /jobs/12345
+```
+
+Response:
+
+```json
+{
+    "jobId": "12345",
+    "status": "COMPLETED",
+    "progress": 100
+}
+```
+
+So:
+
+```text
+Long-running REST operation
+            |
+            v
+        202 Accepted
+            |
+            v
+       jobId returned
+            |
+            v
+   Client checks status
+```
+
+This is much more common than trying to keep an HTTP request alive with `102`.
+
+---
+
+# 12. `103 Early Hints`
+
+`103 Early Hints` is used to send **preliminary HTTP headers before the final response**.
+
+The main use case is performance optimization.
+
+For example, suppose your HTML page will need:
+
+```text
+style.css
+app.js
+logo.png
+```
+
+The server can tell the browser early:
+
+```http
+103 Early Hints
+Link: </style.css>; rel=preload
+Link: </app.js>; rel=preload
+```
+
+The browser can start fetching those resources **before the final response arrives**.
+
+Then eventually:
+
+```http
+200 OK
+```
+
+---
+
+# 13. Flow of `103`
+
+```text
+Client
+   |
+   | GET /home
+   v
+Server
+   |
+   | 103 Early Hints
+   | Link: </style.css>; rel=preload
+   |
+   v
+Client starts loading CSS
+   |
+   |.................
+   |
+   | 200 OK
+   v
+Final HTML
+```
+
+This is mainly a **web performance optimization**, not something you normally implement inside a REST controller.
+
+---
+
+# 14. Controller vs HTTP infrastructure
+
+This distinction is very important.
+
+When you write:
+
+```java
+@RestController
+public class CustomerController {
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Customer> getCustomer(
+            @PathVariable Long id) {
+
+        return ResponseEntity.ok(customer);
+    }
+}
+```
+
+your controller normally produces the **final application response**:
+
+```text
+200
+201
+202
+204
+400
+401
+403
+404
+409
+500
+...
+```
+
+But some `1xx` responses are handled by lower-level HTTP infrastructure:
+
+```text
+              Spring Boot Application
+                       |
+                 Controller
+                       |
+                 Spring MVC
+                       |
+              Servlet Container
+              (Tomcat/Jetty/etc.)
+                       |
+                    HTTP
+                       |
+                    Client
+```
+
+So the controller is **not necessarily responsible for every HTTP status exchanged between client and server**.
+
+---
+
+# 15. `1xx` vs `2xx`
+
+This is the most important distinction.
+
+### `1xx`
+
+```text
+Request is still being processed
+```
+
+Example:
+
+```text
+100 Continue
+```
+
+Means:
+
+```text
+"Continue sending the request."
+```
+
+### `2xx`
+
+```text
+Final successful response
+```
+
+Example:
+
+```text
+200 OK
+```
+
+Means:
+
+```text
+"The request completed successfully."
+```
+
+---
+
+# 16. Real-time Spring Boot example
+
+Suppose you have a large file upload:
+
+```text
+POST /api/documents
+```
+
+Potential HTTP flow:
+
+```text
+             CLIENT
+                |
+                |
+                | POST /api/documents
+                | Expect: 100-continue
+                |
+                v
+        +---------------+
+        | Spring Boot   |
+        | HTTP Server   |
+        +---------------+
+                |
+                | 100 Continue
+                |
+                v
+             CLIENT
+                |
+                | Large request body
+                | 500 MB
+                |
+                v
+        +---------------+
+        | Controller    |
+        |               |
+        | process file  |
+        +---------------+
+                |
+                | 201 Created
+                v
+             CLIENT
+```
+
+Notice that:
+
+```text
+100 Continue
+```
+
+is an **intermediate response**.
+
+And:
+
+```text
+201 Created
+```
+
+is the **final response**.
+
+---
+
+# 17. Another important example: WebSocket
+
+```text
+Client
+   |
+   | HTTP Upgrade Request
+   |
+   v
+Spring Boot
+   |
+   | 101 Switching Protocols
+   |
+   v
+WebSocket
+   |
+   +------------------+
+   |                  |
+   | Real-time data   |
+   |                  |
+   +------------------+
+```
+
+Again:
+
+```text
+101 = protocol transition
+```
+
+not normal REST-controller success.
+
+---
+
+# 18. What should you remember for interviews?
+
+You can explain `1xx` like this:
+
+> **1xx HTTP status codes are informational responses. They indicate that the server has received or is processing the request and that the final response has not yet been returned. They are generally interim responses rather than final application responses. In Spring Boot, most 1xx responses are handled by the underlying HTTP server/framework rather than being explicitly returned from a `@RestController`.**
+
+Then explain the important ones:
+
+| Code                        | Meaning                                        | Spring Boot relevance    |
+| --------------------------- | ---------------------------------------------- | ------------------------ |
+| **100 Continue**            | Client can continue sending request body       | HTTP server handles it   |
+| **101 Switching Protocols** | Switch to another protocol                     | WebSocket                |
+| **102 Processing**          | Request is still being processed               | Mainly WebDAV            |
+| **103 Early Hints**         | Send preliminary headers before final response | Performance optimization |
+
+### Most important takeaway
+
+```text
+1xx → Intermediate / informational
+2xx → Final success
+3xx → Redirection
+4xx → Client/request problem
+5xx → Server/infrastructure problem
+```
+
+And for **Spring Boot REST Controller development**, you will work with **2xx, 4xx and 5xx far more often than 1xx**.
+
+
+200 Ok      : when to use: GET, PUT, PATCH success
+
+201 Created : Resource created when to use:  Successful POST creating a new resource
+
+202 Accepted : -Request accepted for processing, when to use: Async/background processing
+
+204 No Content: Success, no response body when to use: DELETE success or update without returning data
+
+### 2XX — Success HTTP Status Codes
+
+| **Code**                              | **Meaning**                                      | **When to Use**                                                               |
+| ------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------- |
+| **200 OK**                            | Request successful                               | Successful GET, PUT, PATCH, or general successful request                     |
+| **201 Created**                       | Resource successfully created                    | Successful POST that creates a new resource                                   |
+| **202 Accepted**                      | Request accepted for processing                  | Asynchronous processing; request accepted but processing is not completed yet |
+| **203 Non-Authoritative Information** | Response information modified by a proxy         | Proxy/gateway transforms the response                                         |
+| **204 No Content**                    | Request successful with no response body         | Successful DELETE or UPDATE where no response data is required                |
+| **205 Reset Content**                 | Request successful; client should reset the view | Form submission where the client should clear/reset the form                  |
+| **206 Partial Content**               | Partial resource returned                        | Range requests, such as downloading a large file in chunks                    |
+| **207 Multi-Status**                  | Multiple status results in one response          | WebDAV; different operations/resources have different results                 |
+| **208 Already Reported**              | Resource already reported                        | WebDAV; avoids reporting the same resource multiple times                     |
+| **226 IM Used**                       | Instance manipulation applied                    | HTTP delta encoding / partial representation updates                          |
+
+### Most important for REST API development
+
+| **Code**           | **Typical REST API Usage**                                 |
+| ------------------ | ---------------------------------------------------------- |
+| **200 OK**         | `GET /users/101` → User found and returned                 |
+| **201 Created**    | `POST /users` → New user created                           |
+| **202 Accepted**   | `POST /reports` → Report generation started asynchronously |
+| **204 No Content** | `DELETE /users/101` → User deleted successfully            |
+
+**Interview tip:**
+`200 = Success` → `201 = Created` → `202 = Accepted for processing` → `204 = Success, no body`
+
+
+4xx Client Errors:
+******************
+
+| **HTTP Code**                  | **Meaning**               | **When to Use**                               |
+| ------------------------------ | ------------------------- | --------------------------------------------- |
+| **400 Bad Request**            | Invalid request format    | Missing required fields, invalid JSON         |
+| **401 Unauthorized**           | Authentication required   | Missing or invalid token                      |
+| **403 Forbidden**              | Access denied             | User is authenticated but lacks permission    |
+| **404 Not Found**              | Resource not found        | Requested ID/resource doesn't exist           |
+| **405 Method Not Allowed**     | HTTP method not supported | POST on a GET-only endpoint                   |
+| **409 Conflict**               | Resource conflict         | Duplicate email, duplicate key                |
+| **415 Unsupported Media Type** | Wrong content type        | API expects JSON but receives XML             |
+| **422 Unprocessable Entity**   | Validation failed         | Invalid email format, business rule violation |
+| **429 Too Many Requests**      | Rate limit exceeded       | API throttling                                |
+
+
+400 Bad Request
+{
+  "error": "FirstName is required"
+}
+
+401 Unauthorized
+{
+  "error": "Invalid access token"
+}
+
+404 Not Found
+{
+  "error": "User not found"
+}
+
+5xx Server Errors:
+*******************
+
+| **Code**                      | **Meaning**                     | **When to Use**                    |
+| ----------------------------- | ------------------------------- | ---------------------------------- |
+| **500 Internal Server Error** | Unexpected server failure       | Unhandled exception                |
+| **501 Not Implemented**       | Feature not supported           | Endpoint planned but not available |
+| **502 Bad Gateway**           | Upstream service failure        | API Gateway issue                  |
+| **503 Service Unavailable**   | Service temporarily unavailable | Maintenance, dependency outage     |
+| **504 Gateway Timeout**       | Upstream timeout                | Backend service not responding     |
+
+
+500 Internal Server Error
+{
+  "error": "An unexpected error occurred"
+}
+503 Service Unavailable
+{
+  "error": "Service temporarily unavailable"
+}
+
+Typical REST API Error Mapping:
+********************************
+
+Validation Error          -> 400 / 422
+Authentication Failure    -> 401
+Authorization Failure     -> 403
+Resource Not Found        -> 404
+Duplicate Resource        -> 409
+Rate Limit Exceeded       -> 429
+Unexpected Exception      -> 500
+Dependency Down           -> 503
+
+Sample Standard Error Response:
+
+{
+  "timestamp": "2026-08-08T10:30:00Z",
+  "status": 404,
+  "error": "Not Found",
+  "message": "User with id 123 not found",
+  "path": "/api/users/123"
+}
+400 Bad Request:
+
+Common reasons:
+
+Malformed JSON
+Missing required request body
+Invalid query parameter format
+Invalid data type
+
+POST /users
+Content-Type: application/json
+
+{
+  "name": "Sunil",
+  "age":
+}
+400 Bad Request
+
+{
+  "name": "Sunil",
+  "age": "abc"
+}
+422 Unprocessable Entity
+
+Use 422 when:
+
+The request is syntactically correct.
+The server understands it.
+But the data violates business or validation rules.
+
+{
+  "email": "invalid-email"
+}
+The JSON is valid, but the data is not acceptable.
+
+422 Unprocessable Entity
+{
+  "message": "End date must be after start date"
+}
+
+
+Quick Rule
+
+Ask yourself:
+
+Can the server parse the request?
+
+❌ No → 400 Bad Request
+
+✅ Yes → Check validation/business rules.
+
+Does the data violate rules?
+
+✅ Yes → 422 Unprocessable Entity
+
+✅ No → Process request.
+
+---------------------------------------------------------------------------
+
+There is a **mix-up here**. The meanings you mentioned are **not the standard meanings of HTTP 404 and 508**.
+
+| **Code**                    | **Standard Meaning**     | **What it actually means**                                             | **Resiliency relevance**                   |
+| --------------------------- | ------------------------ | ---------------------------------------------------------------------- | ------------------------------------------ |
+| **404 Not Found**           | Resource not found       | Client requested a resource/URL that the server cannot find            | **Not a timeout code**                     |
+| **508 Loop Detected**       | Loop detected            | Server detected an infinite loop while processing the request (WebDAV) | **Not a service-to-service timeout code**  |
+| **502 Bad Gateway**         | Upstream service failure | Gateway/proxy received an invalid response from another service        | **Common in microservices**                |
+| **503 Service Unavailable** | Service unavailable      | Service is temporarily unable to handle requests                       | **Common for dependency/service failures** |
+| **504 Gateway Timeout**     | Upstream timeout         | Gateway/proxy waited too long for another service to respond           | **Common for service-to-service timeout**  |
+
+### What you probably read about
+
+In a microservices architecture:
+
+```text
+Client
+   |
+   | HTTP Request
+   ↓
+API Gateway
+   |
+   | HTTP Request
+   ↓
+Order Service
+   |
+   | HTTP Request
+   ↓
+Payment Service
+```
+
+If **Client → Server** takes too long, you would typically see a **timeout**, often represented by **504 Gateway Timeout** when a gateway/proxy is involved.
+
+If **Service A → Service B** takes too long:
+
+```text
+Order Service ───────→ Payment Service
+                 timeout
+```
+
+the actual behavior depends on the HTTP client and architecture. The caller may get a client-side timeout exception, or an intermediary such as a gateway may return **504**.
+
+### Important distinction
+
+**404 does NOT mean:**
+
+> "Client and server communication is taking too much time."
+
+It means:
+
+> **"The requested resource was not found."**
+
+**508 does NOT mean:**
+
+> "Service-to-service communication is taking too much time."
+
+It means:
+
+> **"A loop was detected while processing the request."**
+
+For **resiliency**, the codes you should especially remember are:
+
+| **Code** | **Microservices Resiliency Meaning**     |
+| -------- | ---------------------------------------- |
+| **408**  | Client request timeout                   |
+| **429**  | Too many requests / rate limiting        |
+| **502**  | Upstream service returned a bad response |
+| **503**  | Service unavailable                      |
+| **504**  | Upstream service/gateway timeout         |
+
+So, for your **Spring Boot + Microservices resiliency** preparation, **504 is the important timeout code**, not 404 or 508.
+
+-------------------------------
+The key difference is who timed out.
+
+408 Request Timeout
+
+Client → Server communication issue
+
+The server was waiting for the client's request but did not receive it completely within the allowed time.
+
+Client  --------->  Server
+       (too slow)
+Server --------->  408 Request Timeout
+
+
+Example:
+
+Client starts uploading a large file.
+Network is slow.
+Server waits for the request body.
+Request is not completed in time.
+
+Response:
+
+408 Request Timeout
+
+
+Responsibility: Client-side communication problem.
+
+504 Gateway Timeout
+
+Server → Server communication issue
+
+A server acting as a gateway/proxy cannot get a response from a downstream service within the timeout period.
+
+Client
+   |
+API Gateway
+   |
+User Service -----> Payment Service
+                       (not responding)
+
+Gateway returns 504
+
+
+Response:
+
+504 Gateway Timeout
+
+
+Example:
+
+API Gateway receives the request.
+Gateway calls User Service.
+User Service calls Payment Service.
+Payment Service is slow or unavailable.
+User Service/Gateway times out waiting.
+
+Responsibility: Upstream dependency or downstream service problem.
+
+Quick Comparison
+Aspect	408 Request Timeout	504 Gateway TimeoutTimeout occurs between	Client and Server	Server and another Server
+Who is waiting?	Server waiting for Client	Server waiting for Upstream Service
+Common in	Web apps, file uploads	Microservices, APIs, gateways
+Category	Client error (4xx)	Server error (5xx)
+Microservices Interview Shortcut
+
+Remember:
+
+Client slow      -> 408
+Service slow     -> 504
+
+Examples
+
+408
+
+Browser -> API
+(browser stops sending data)
+=> 408
+
+
+504
+
+Browser -> API Gateway -> Order Service -> Inventory Service
+
+Inventory Service doesn't respond
+=> 504
+
+
+This is the simplest and most commonly accepted distinction in REST APIs and microservices architectures.
+
+Use 408 and 504 based on where the timeout happens.
+
+Use 408 Request Timeout
+
+When the server is waiting for the client to send the request.
+
+Example:
+
+Client ---> API Server
+
+
+Scenarios:
+
+Client uploads a file very slowly.
+Client opens a connection but doesn't send the request body.
+Mobile app loses network connectivity while sending the request.
+
+Response:
+
+408 Request Timeout
+
+
+Rule: The server could not get the complete request from the client in time.
+
+Use 504 Gateway Timeout
+
+When the server is waiting for another server/service.
+
+Example:
+
+Client
+  |
+API Gateway
+  |
+Order Service ---> Payment Service
+                     (timeout)
+
+
+Scenarios:
+
+Microservice A calls Microservice B and waits too long.
+API Gateway waits for a backend service.
+Application waits for a third-party API.
+Service waits for a database proxy or downstream dependency.
+
+Response:
+
+504 Gateway Timeout
+
+
+Rule: The server received the request successfully but couldn't get a timely response from a dependency.
+
+Real REST API Examples
+408 Example
+POST /upload
+
+Client starts sending 1 GB file.
+Network disconnects after 10 MB.
+Server waits 60 seconds.
+
+
+Return:
+
+408 Request Timeout
+
+504 Example
+GET /orders/123
+
+Order API receives request.
+Order API calls Payment API.
+Payment API doesn't respond within 30 seconds.
+
+
+Return:
+
+504 Gateway Timeout
+
+In Resilient Microservices
+
+A common flow is:
+
+Client -> API Gateway -> Service A -> Service B
+
+Client doesn't send request properly → 408
+Service B doesn't respond → 504
+Service B is down/maintenance → 503 Service Unavailable
+Resource doesn't exist → 404 Not Found
+Interview One-Liner
+
+408 = timeout between client and server.
+ 504 = timeout between server and downstream service.
+ 
+ 
+ Yes, a slow database can indirectly cause a 504 Gateway Timeout, but not because the database itself returns a 504.
+
+Consider this flow:
+
+Client
+  |
+API Gateway
+  |
+Order Service
+  |
+Database (slow query)
+
+Client sends request.
+Order Service executes a database query.
+Database takes too long (e.g., 45 seconds).
+API Gateway has a timeout configured for 30 seconds.
+Gateway gives up waiting and returns:
+504 Gateway Timeout
+
+Who returns the 504?
+
+Usually:
+
+API Gateway (e.g., Kong, Nginx, Azure APIM)
+Load Balancer
+Reverse Proxy
+Calling microservice
+
+The database does not typically return HTTP status codes.
+
+Example
+GET /orders/123
+
+Order Service:
+   SELECT * FROM Orders
+   JOIN OrderItems ...
+
+
+Query takes 60 seconds.
+
+Gateway timeout:
+
+Gateway timeout = 30 seconds
+Database response = 60 seconds
+
+
+Result:
+
+504 Gateway Timeout
+
+Other Possible Responses
+
+Depending on architecture, a slow database may also lead to:
+
+500 Internal Server Error
+
+
+if the application catches a database timeout exception and returns 500.
+
+Or:
+
+503 Service Unavailable
+
+
+if a circuit breaker opens because the database is unhealthy.
+
+Interview Answer
+
+Can a slow database cause a 504?
+
+Yes. If a service is waiting on a slow database and fails to respond within the timeout configured by a gateway, proxy, or caller service, the waiting component may return 504 Gateway Timeout. The timeout is between services; the database is usually the root cause, but the 504 is returned by the gateway or calling service.
+
+----------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

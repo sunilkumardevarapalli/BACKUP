@@ -1,0 +1,82 @@
+7. AbstractRoutingDataSource
+
+This is the Spring mechanism behind routing.
+
+For example:
+
+public class TenantRoutingDataSource
+        extends AbstractRoutingDataSource {
+
+    @Override
+    protected Object determineCurrentLookupKey() {
+
+        return TenantContext.getTenant();
+    }
+}
+
+Tenant context:
+
+public class TenantContext {
+
+    private static final ThreadLocal<String> TENANT =
+            new ThreadLocal<>();
+
+    public static void setTenant(String tenant) {
+        TENANT.set(tenant);
+    }
+
+    public static String getTenant() {
+        return TENANT.get();
+    }
+
+    public static void clear() {
+        TENANT.remove();
+    }
+}
+
+Now:
+
+Request
+   ↓
+Tenant = CUSTOMER_A
+   ↓
+RoutingDataSource
+   ↓
+Customer A DB
+8. Multi-Tenancy
+
+Example:
+
+Application
+    ↓
+Tenant ID
+    ↓
+ ┌───────────────┐
+ ↓       ↓       ↓
+DB-A    DB-B    DB-C
+
+Controller:
+
+@GetMapping("/orders")
+public List<Order> getOrders(
+        @RequestHeader("X-Tenant-ID") String tenant) {
+
+    TenantContext.setTenant(tenant);
+
+    try {
+        return orderService.getOrders();
+    }
+    finally {
+        TenantContext.clear();
+    }
+}
+
+For example:
+
+X-Tenant-ID: COMPANY_A
+        ↓
+company_a_db
+
+X-Tenant-ID: COMPANY_B
+        ↓
+company_b_db

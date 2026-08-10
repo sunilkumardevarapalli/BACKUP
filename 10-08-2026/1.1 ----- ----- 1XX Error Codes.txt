@@ -1,0 +1,1550 @@
+
+
+100 → Continue sending request --> "You may send the request body." 
+101 → Switch protocol  --> switch the protocol, commonly HTTP → WebSocket.
+102 → Processing --> "I received your request and I'm still processing it."
+103 → Early hints  --> Ex: get users list and send to broser before css download and prepare the brosure.
+
+
+| Code                        | Meaning                                | Typical Purpose                                   |
+| --------------------------- | -------------------------------------- | ------------------------------------------------- |
+| **100 Continue**            | Client should continue sending request | Large request body / `Expect: 100-continue`       |
+| **101 Switching Protocols** | Server agrees to switch protocols      | WebSocket / protocol upgrade                      |
+| **102 Processing**          | Server is processing request           | WebDAV; intermediate processing                   |
+| **103 Early Hints**         | Provides preliminary headers           | Send preload/resource hints before final response |
+
+
+# 16. Most useful rejection examples
+
+For your learning, remember these:
+
+| Situation                   | Possible response                              | Layer                    |
+| --------------------------- | ---------------------------------------------- | ------------------------ |
+| Malformed HTTP request      | `400 Bad Request`                              | Tomcat/HTTP              |
+| Invalid headers             | `400 Bad Request`                              | Tomcat/HTTP              |
+| Header too large            | `400` / connection rejection depending on case | Tomcat/HTTP              |
+| Request too large           | Depends on configured component                | Tomcat/proxy/application |
+| Invalid request framing     | `400` / rejection                              | HTTP/container           |
+| Unsupported `Expect` value  | `417 Expectation Failed`                       | HTTP                     |
+| Invalid JSON                | `400 Bad Request`                              | Spring                   |
+| Missing endpoint            | `404 Not Found`                                | Spring                   |
+| Invalid authentication      | `401 Unauthorized`                             | Security layer           |
+| Access denied               | `403 Forbidden`                                | Security layer           |
+| Business validation failure | Usually `400` or application-defined           | Controller/Spring        |
+
+---------------------------------------------------------------------------------------------------------------
+
+100 Continue means "I received your request headers; you may continue sending the request body.
+
+You normally do not return `1xx` responses directly from a Spring Boot `@RestController`.
+
+"Tomcat has verified that my API request is valid."
+
+with 100:
+
+"At the HTTP/server level, Tomcat is allowing the client to continue sending the request body."
+
+Step 1: You have this in Postman:
+
+		POST /api/users/search
+		Content-Type: application/json
+		Expect: 100-continue
+
+	POSTMAN
+	   |
+	   | POST /api/users/search
+	   | Content-Type: application/json
+	   | Expect: 100-continue
+	   |
+	   v
+	TOMCAT
+	
+Step 2:"You may continue sending the request body."
+
+	POSTMAN
+	   |
+	   | Headers
+	   v
+	TOMCAT
+	   |
+	   | 100 Continue
+	   v
+	POSTMAN
+
+Step 3: Now Spring MVC gets involved
+
+	Once the request can proceed, Tomcat has the request body.
+
+	Now the request enters Spring MVC:
+
+
+	POSTMAN
+	   |
+	   | Request body
+	   v
+	TOMCAT
+	   |
+	   v
+	DispatcherServlet
+
+	Now DispatcherServlet determines:
+
+	Which controller should handle /api/users/search?
+
+	It finds: @PostMapping("/search")
+	
+	Now your actual Controller executes
+	
+	
+POSTMAN
+   |
+   | Headers
+   v
+TOMCAT
+   |
+   | HTTP checks
+   |
+   +------------------------+
+   |                        |
+   | ACCEPT                 | REJECT
+   v                        v
+100 Continue              Error
+   |                        |
+   v                        v
+POSTMAN                  Stop/handle	
+
+---
+POSTMAN
+   |
+   | Headers
+   v
+Tomcat
+   |
+   | 100 Continue
+   |
+   v
+Request body
+   |
+   v
+DispatcherServlet
+   |
+   | No matching endpoint
+   v
+404 Not Found
+
+
+```text
+POSTMAN
+   |
+   | Content-Length: 500 MB  //Content-Length: 500000000
+   | Expect: 100-continue
+   v
+TOMCAT
+   |
+   | Request exceeds allowed limit
+   |
+   v
+ERROR
+
+Client
+   |
+   | Huge HTTP headers
+   v
+Tomcat
+   |
+   | Header limit exceeded
+   v
+400 Bad Request
+```
+
+This is **not a normal Tomcat HTTP parsing rejection**.
+
+POSTMAN
+   |
+   | Headers
+   v
+Tomcat
+   |
+   v
+Spring Security
+   |
+   | Invalid token
+   v
+401 Unauthorized
+------------------------------------------------------------------------------------------------------------
+
+2. 102 Processing is different
+
+With 102, the request has already reached the server and the server is processing it.
+
+Think:
+
+	Client
+	   |
+	   | Request
+	   v
+	Tomcat
+	   |
+	   v
+	Spring MVC
+	   |
+	   v
+	Controller
+	   |
+	   v
+	Service
+	   |
+	   v
+	Long processing...
+	   |
+	   | 102 Processing
+	   v
+	Client
+
+
+	The meaning is:
+
+	"I received your request. I'm still working on it. Don't assume the request has failed just because the final response hasn't arrived yet."
+
+
+Where does 102 Processing fit?
+
+Conceptually:
+
+	CLIENT
+	   |
+	   | POST /api/report/generate
+	   | Request Body
+	   v
+	TOMCAT
+	   |
+	   v
+	DispatcherServlet
+	   |
+	   v
+	Controller
+	   |
+	   v
+	Service
+	   |
+	   |-------------------------|
+	   |                         |
+	   |     LONG PROCESSING     |
+	   |                         |
+	   |-------------------------|
+	   |
+	   | 102 Processing
+	   v
+	CLIENT
+
+	The important point is:
+
+	102 is an informational response during processing.
+
+	Complete 102 flow
+
+	This is the flow you should remember:
+
+			 REQUEST
+			   |
+			   v
+
+		  ┌─────────┐
+		  │ POSTMAN │
+		  └────┬────┘
+			   |
+			   | POST /api/report/generate
+			   | Content-Type: application/json
+			   | Body
+			   |
+			   v
+		  ┌─────────┐
+		  │ TOMCAT  │
+		  └────┬────┘
+			   |
+			   v
+		DispatcherServlet
+			   |
+			   v
+		ReportController
+			   |
+			   v
+		 ReportService
+			   |
+			   v
+		   Database
+			   |
+			   |
+			   | LONG PROCESSING
+			   |
+			   v
+
+		  102 Processing
+			   |
+			   v
+		   POSTMAN
+
+  "Server is still processing"
+
+			   |
+			   |
+			   | Processing continues
+			   |
+			   v
+
+		   Database
+			   |
+			   v
+		 ReportService
+			   |
+			   v
+		ReportController
+			   |
+			   v
+		   TOMCAT
+			   |
+			   | 200 OK
+			   | Final Response
+			   v
+		   POSTMAN
+		   
+Very important: 102 does NOT stop processing
+
+	Suppose processing takes 60 seconds.
+
+	The flow conceptually could be:
+
+	Request
+	   ↓
+	Controller
+	   ↓
+	Service
+	   ↓
+	Database
+	   ↓
+	102 Processing
+	   ↓
+	Continue processing
+	   ↓
+	Database
+	   ↓
+	Service
+	   ↓
+	Controller
+	   ↓
+	200 OK
+
+
+Compare 100 and 102
+
+This is probably the most important part for you.
+
+100 Continue
+
+	CLIENT
+	   |
+	   | Headers
+	   | Expect: 100-continue
+	   v
+	SERVER
+	   |
+	   | 100 Continue
+	   v
+	CLIENT
+	   |
+	   | Request Body
+	   v
+	SERVER
+
+	Meaning:
+
+	"You can continue sending the request."
+
+102 Processing
+
+	CLIENT
+	   |
+	   | Complete Request
+	   v
+	SERVER
+	   |
+	   v
+	Controller
+	   |
+	   v
+	Service
+	   |
+	   | Long processing
+	   |
+	   | 102 Processing
+	   v
+	CLIENT
+
+	SERVER continues processing
+	   |
+	   v
+	Final response
+	   |
+	   | 200 OK
+	   v
+	CLIENT
+
+	Meaning:
+
+	"I received your request and I'm still processing it."
+
+	@PostMapping("/generate")
+	public ResponseEntity<?> generate() {
+
+		// send 102
+
+		// continue processing
+
+		return ResponseEntity.ok(...);
+	}
+
+	┌─────────────────────────────────────────────────┐
+	│                 1xx INFORMATIONAL               │
+	├─────────┬───────────────────────────────────────┤
+	│ 100     │ "Continue sending the request body."  │
+	├─────────┼───────────────────────────────────────┤
+	│ 101     │ "Switch protocols."                   │
+	│         │ HTTP → WebSocket                      │
+	├─────────┼───────────────────────────────────────┤
+	│ 102     │ "Request received; still processing." │
+	└─────────┴───────────────────────────────────────┘
+
+100:
+
+Headers
+   ↓
+100 Continue
+   ↓
+Request Body
+   ↓
+Controller
+   ↓
+Final Response
+
+
+101:
+
+HTTP Handshake
+   ↓
+101 Switching Protocols
+   ↓
+WebSocket
+   ↕
+Messages
+
+102:
+
+Complete Request
+   ↓
+Controller
+   ↓
+Service
+   ↓
+Long Processing
+   ↓
+102 Processing
+   ↓
+Continue Processing
+   ↓
+Final Response
+
+
+So the answer is: 102 does NOT follow your 100 Continue three-step flow. 100 is about allowing the client to continue sending the request; 102 is about telling the client that the server is already processing the request.
+
+
+------------------------------------------------------------------------------------------------------------
+103:
+
+The most important rule
+
+A Java return exits the controller method. It does not mean "send an interim HTTP response and then continue."
+
+And:
+
+An HTTP 103 Early Hints response does not cause the client to automatically send the original request again.
+
+              ONE HTTP REQUEST
+                     |
+                     v
+                  SERVER
+                     |
+              103 Early Hints
+                     |
+                     v
+             Server continues
+             processing request
+                     |
+                     v
+                  200 OK
+                     |
+                     v
+                   CLIENT
+				   
+So 103 → 200 can be two HTTP responses for the same request, but return 103 → return 200 cannot be two normal Java return statements in one controller method.
+
+package com.example.demo.controller;
+
+import com.example.demo.model.User;
+import com.example.demo.service.UserService;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api")
+public class UserController {
+
+    private final UserService userService;
+
+    public UserController(UserService userService) {
+        this.userService = userService;
+    }
+
+    @GetMapping("/users")
+    public ResponseEntity<List<User>> users(
+            HttpServletResponse response) throws IOException {
+
+        // ==========================================
+        // STEP 1: Send 103 Early Hints
+        // ==========================================
+
+        response.setStatus(103);
+
+        response.setHeader(
+                "Link",
+                "</css/users.css>; rel=preload; as=style"
+        );
+
+        response.setHeader(
+                "X-Early-Hint",
+                "User list is being prepared"
+        );
+
+        response.flushBuffer();
+
+
+        // ==========================================
+        // STEP 2: Continue processing
+        // ==========================================
+
+        System.out.println("103 Early Hints sent");
+
+        List<User> users = userService.getUsers();
+
+
+        // ==========================================
+        // STEP 3: Return final response
+        // ==========================================
+
+        return ResponseEntity.ok(users);
+    }
+}
+
+Without the `Link` header:
+
+```text
+103 Early Hints
+```
+
+has **no useful preload information** for the browser.
+
+With it:
+
+```http
+103 Early Hints
+Link: </css/users.css>; rel=preload; as=style
+```
+
+means:
+
+> **“Browser, start loading this CSS now while the server is preparing the final response.”**
+
+So:
+
+**103 alone → just an early informational response.**
+**103 + Link → useful performance optimization.**
+				   
+-------------------------------------------------------------------------------------------------
+
+				   
+Sure. Let’s understand this **Spring Boot controller step by step**, especially what happens with **103 Early Hints**, `setHeader()`, and `flushBuffer()`.
+
+## Complete Flow
+
+```text
+Client
+   |
+   | GET /api/users
+   ↓
+UserController
+   |
+   | 1. Set HTTP status = 103
+   | 2. Set Link header
+   | 3. Set X-Early-Hint header
+   | 4. flushBuffer()
+   ↓
+Client receives 103 Early Hints
+   |
+   | Meanwhile server continues processing
+   ↓
+userService.getUsers()
+   |
+   ↓
+Database
+   |
+   ↓
+List<User>
+   |
+   ↓
+Controller
+   |
+   | Return ResponseEntity.ok(users)
+   ↓
+HTTP 200 OK
+   |
+   ↓
+Client
+```
+
+---
+
+# 1. `@RestController`
+
+```java
+@RestController
+```
+
+This tells Spring:
+
+> "This class handles HTTP requests and returns data directly as the HTTP response."
+
+For example:
+
+```java
+@GetMapping("/users")
+```
+
+can return:
+
+```json
+[
+  {
+    "id": 1,
+    "name": "John"
+  }
+]
+```
+
+Spring automatically converts the Java `List<User>` into JSON.
+
+---
+
+# 2. `@RequestMapping("/api")`
+
+```java
+@RequestMapping("/api")
+public class UserController {
+```
+
+This defines the common URL prefix.
+
+So:
+
+```java
+@GetMapping("/users")
+```
+
+becomes:
+
+```text
+GET /api/users
+```
+
+---
+
+# 3. Constructor Injection
+
+```java
+private final UserService userService;
+
+public UserController(UserService userService) {
+    this.userService = userService;
+}
+```
+
+Spring creates the `UserService` object and injects it into the controller.
+
+So the controller can call:
+
+```java
+userService.getUsers();
+```
+
+---
+
+# 4. `@GetMapping("/users")`
+
+```java
+@GetMapping("/users")
+public ResponseEntity<List<User>> users(
+        HttpServletResponse response) throws IOException {
+```
+
+When the client sends:
+
+```http
+GET /api/users
+```
+
+Spring executes this method.
+
+The important part here is:
+
+```java
+HttpServletResponse response
+```
+
+This gives you direct access to the HTTP response.
+
+You can use it to set:
+
+* HTTP status
+* headers
+* cookies
+* response buffer
+* response body
+
+---
+
+# STEP 1 — Send 103 Early Hints
+
+## 5. Set status 103
+
+```java
+response.setStatus(103);
+```
+
+You are telling the servlet response:
+
+> "The current response status is 103 Early Hints."
+
+`103` means:
+
+> **The server is still processing the request, but here is some useful information the client can use now.**
+
+It is **not the final response**.
+
+---
+
+# 6. Set the `Link` header
+
+```java
+response.setHeader(
+        "Link",
+        "</css/users.css>; rel=preload; as=style"
+);
+```
+
+This tells the client:
+
+> "While I'm preparing the users response, you can start loading `/css/users.css`."
+
+The important part is:
+
+```http
+Link: </css/users.css>; rel=preload; as=style
+```
+
+### Why is this useful?
+
+Imagine:
+
+```text
+Client requests /api/users
+             |
+             ↓
+Server needs 2 seconds to get users
+             |
+             ↓
+103 Early Hints
+             |
+             ↓
+Client starts downloading users.css
+             |
+             ↓
+Server finishes database processing
+             |
+             ↓
+200 OK + users
+```
+
+So the client doesn't have to wait until the final `200 OK` to discover the CSS resource.
+
+---
+
+# 7. Set custom header
+
+```java
+response.setHeader(
+        "X-Early-Hint",
+        "User list is being prepared"
+);
+```
+
+This creates:
+
+```http
+X-Early-Hint: User list is being prepared
+```
+
+This is a **custom header**.
+
+It can be useful for debugging, tracing, or communicating custom information.
+
+For example:
+
+```text
+Client/Proxy
+     |
+     ↓
+X-Early-Hint:
+User list is being prepared
+```
+
+However, this header itself does **not cause 103 Early Hints**.
+
+The important 103 information is the status and headers such as `Link`.
+
+---
+
+# 8. Most important line — `flushBuffer()`
+
+```java
+response.flushBuffer();
+```
+
+This is the key line in your example.
+
+Normally, the server may keep the response in a buffer.
+
+Conceptually:
+
+```text
+setStatus(103)
+       ↓
+setHeader(...)
+       ↓
+setHeader(...)
+       ↓
+Response Buffer
+```
+
+Nothing necessarily has been sent to the client yet.
+
+When you call:
+
+```java
+response.flushBuffer();
+```
+
+you are telling the response:
+
+> **"Flush the buffered response data now."**
+
+Conceptually:
+
+```text
+Response Buffer
+     |
+     | flushBuffer()
+     ↓
+HTTP connection
+     |
+     ↓
+Client
+```
+
+So the intention of this code is:
+
+```text
+103 Early Hints
+      +
+Link header
+      +
+X-Early-Hint header
+      ↓
+Send/flush toward client
+```
+
+### Important clarification
+
+`flushBuffer()` does **not mean the Java method ends**.
+
+The controller continues executing.
+
+That's why this works:
+
+```java
+response.flushBuffer();
+
+System.out.println("103 Early Hints sent");
+
+List<User> users = userService.getUsers();
+```
+
+The method continues after `flushBuffer()`.
+
+---
+
+# STEP 2 — Continue processing
+
+After:
+
+```java
+response.flushBuffer();
+```
+
+you have:
+
+```java
+System.out.println("103 Early Hints sent");
+```
+
+This simply prints:
+
+```text
+103 Early Hints sent
+```
+
+to the server console.
+
+It has nothing to do with HTTP communication.
+
+---
+
+# 9. Get users from service
+
+```java
+List<User> users = userService.getUsers();
+```
+
+Now the actual business processing starts.
+
+For example:
+
+```text
+Controller
+    |
+    ↓
+UserService
+    |
+    ↓
+UserRepository
+    |
+    ↓
+Database
+    |
+    ↓
+Users
+```
+
+Suppose the database returns:
+
+```java
+[
+    User(1, "John"),
+    User(2, "David"),
+    User(3, "Sam")
+]
+```
+
+Then:
+
+```java
+users
+```
+
+contains those objects.
+
+---
+
+# STEP 3 — Return final response
+
+Finally:
+
+```java
+return ResponseEntity.ok(users);
+```
+
+`ResponseEntity.ok()` means:
+
+```http
+HTTP/1.1 200 OK
+```
+
+So the final response is conceptually:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+[
+  {
+    "id": 1,
+    "name": "John"
+  },
+  {
+    "id": 2,
+    "name": "David"
+  }
+]
+```
+
+---
+
+# Complete Timeline
+
+Suppose `getUsers()` takes 3 seconds.
+
+The flow is approximately:
+
+```text
+Time 0 ms
+   |
+   | Client → GET /api/users
+   ↓
+Controller starts
+   |
+   ↓
+response.setStatus(103)
+   |
+   ↓
+set Link header
+   |
+   ↓
+set X-Early-Hint header
+   |
+   ↓
+flushBuffer()
+   |
+   ↓
+103 Early Hints intended to be sent
+   |
+   |       Client can potentially start
+   |       loading users.css
+   |
+   ↓
+userService.getUsers()
+   |
+   |------ Database processing ------|
+   |                                 |
+   ↓                                 ↓
+Users returned
+   |
+   ↓
+ResponseEntity.ok(users)
+   |
+   ↓
+200 OK
+   |
+   ↓
+JSON users
+   |
+   ↓
+Client
+```
+
+---
+
+# One Important Real-World Point
+
+There is a subtle issue with this exact implementation.
+
+**Setting `response.setStatus(103)` and calling `flushBuffer()` does not guarantee that every servlet container/proxy/client will actually produce a standards-compliant separate `103 Early Hints` interim response.**
+
+Why?
+
+Because `103 Early Hints` is an **interim HTTP response**, while the normal servlet response API is primarily designed around producing the final response.
+
+So you should verify your:
+
+```text
+Spring Boot
+    ↓
+Servlet container
+    ↓
+Reverse proxy / API Gateway
+    ↓
+Load balancer
+    ↓
+Browser/client
+```
+
+all support forwarding 103 correctly.
+
+---
+
+# The Three Most Important Lines
+
+If you remember only these three:
+
+### 1. `setStatus(103)`
+
+```java
+response.setStatus(103);
+```
+
+Means:
+
+> **Tell the client this is an Early Hints response.**
+
+### 2. `setHeader()`
+
+```java
+response.setHeader("Link", "</css/users.css>; rel=preload; as=style");
+```
+
+Means:
+
+> **Tell the client what resource it can start preparing/loading.**
+
+### 3. `flushBuffer()`
+
+```java
+response.flushBuffer();
+```
+
+Means:
+
+> **Flush the currently buffered response data instead of waiting for the method to finish.**
+
+Then:
+
+```java
+userService.getUsers();
+```
+
+continues the server-side processing, and:
+
+```java
+return ResponseEntity.ok(users);
+```
+
+produces the intended **final `200 OK` response**.
+
+### In one sentence
+
+**103 Early Hints = "I'm still working, but you can start preparing these resources now"; 200 OK = "I'm finished, here is the actual result."**
+
+--------------------------------------------------------------------------------------------
+
+**Yes, conceptually — but with one important clarification.**
+
+If `103 Early Hints` is properly supported by your **servlet container + proxy + browser**, then:
+
+```java
+response.setStatus(103);
+
+response.setHeader(
+    "Link",
+    "</css/users.css>; rel=preload; as=style"
+);
+
+response.flushBuffer();
+```
+
+can cause the browser to receive the **103 Early Hints before the final users response**.
+
+### Timeline
+
+```text
+Browser
+   |
+   | GET /api/users
+   ↓
+Controller
+   |
+   | 103 Early Hints
+   | Link: </css/users.css>; rel=preload
+   ↓
+Browser
+   |
+   | Starts downloading/preloading CSS
+   ↓
+   |        Meanwhile...
+   |        Server → Database
+   |        Server → getUsers()
+   |
+   ↓
+Final 200 OK
+   |
+   | Users JSON
+   ↓
+Browser
+```
+
+So the idea is:
+
+```text
+103 Early Hints
+      ↓
+Browser learns about CSS
+      ↓
+Browser can start fetching CSS
+      ↓
+Server continues getting users
+      ↓
+200 OK + users list
+```
+
+### But `flushBuffer()` does NOT mean:
+
+> "Send CSS to the browser."
+
+It means:
+
+> **"Flush the currently prepared HTTP response data toward the client."**
+
+The CSS itself is normally fetched separately:
+
+```text
+103:
+Link: </css/users.css>; rel=preload; as=style
+                         ↓
+                   Browser sees it
+                         ↓
+             Browser requests /css/users.css
+                         ↓
+                  CSS server/resource
+```
+
+So **103 doesn't contain the CSS**. It tells the browser **"you can start loading this CSS now."**
+
+**Very important:** Your exact `HttpServletResponse.setStatus(103) + flushBuffer()` approach is container-dependent; for production use, verify that your Spring Boot server/proxy chain actually emits a separate HTTP `103` interim response rather than treating it as the final response.
+--------------------------------------------------------------------------------
+
+# 7. `101 Switching Protocols`
+
+This one is more interesting for real-time applications.
+
+## Meaning
+
+`101` means:
+
+> **"I agree to switch from the current HTTP protocol to another protocol."**
+
+A common example is **WebSocket**.
+
+---
+
+# 8. HTTP → WebSocket
+
+Normally:
+
+```text
+Client
+   |
+   | HTTP request
+   v
+Spring Boot
+   |
+   | HTTP response
+   v
+Client
+```
+
+With WebSocket:
+
+```text
+Client
+   |
+   | HTTP Upgrade Request
+   |
+   | Upgrade: websocket
+   v
+Server
+   |
+   | 101 Switching Protocols
+   |
+   v
+WebSocket Connection
+   |
+   | <-------------------->
+   | Real-time communication
+   | <-------------------->
+```
+
+The client might send:
+
+```http
+GET /chat HTTP/1.1
+Upgrade: websocket
+Connection: Upgrade
+```
+
+The server responds:
+
+```http
+HTTP/1.1 101 Switching Protocols
+Upgrade: websocket
+Connection: Upgrade
+```
+
+After that, communication uses the WebSocket protocol.
+
+---
+
+# 9. Spring Boot WebSocket example
+
+You generally **do not manually return `101` from a REST controller**.
+
+Instead, you configure WebSocket support.
+
+For example:
+
+```java
+@Configuration
+@EnableWebSocket
+public class WebSocketConfig implements WebSocketConfigurer {
+
+    @Override
+    public void registerWebSocketHandlers(
+            WebSocketHandlerRegistry registry) {
+
+        registry.addHandler(
+                new ChatWebSocketHandler(),
+                "/chat"
+        );
+    }
+}
+```
+
+Handler:
+
+```java
+@Component
+public class ChatWebSocketHandler
+        extends TextWebSocketHandler {
+
+    @Override
+    public void handleTextMessage(
+            WebSocketSession session,
+            TextMessage message)
+            throws Exception {
+
+        System.out.println(
+                "Message: " + message.getPayload()
+        );
+
+        session.sendMessage(
+                new TextMessage("Message received")
+        );
+    }
+}
+```
+
+The WebSocket infrastructure handles the protocol upgrade.
+
+So don't normally write:
+
+```java
+return ResponseEntity
+        .status(HttpStatus.SWITCHING_PROTOCOLS)
+        .build();
+```
+
+for a normal WebSocket implementation.
+
+---
+
+				   
+				   
+				   
+				   
+				   
+				   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+					   
+					   
+					   
+					   
+					   
+					   
+					   
+					   
+					   
+					   
+					   
+					   
+					   
+					   
+					   
+					   
+					   
+					   
+					   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

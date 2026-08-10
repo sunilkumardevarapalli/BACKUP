@@ -1,0 +1,1099 @@
+In a **Spring Boot microservices architecture**, microservice-to-microservice communication can be broadly divided into **2 major types**:
+
+```text
+Microservice Communication
+│
+├── 1. Synchronous
+│      ├── REST / HTTP
+│      ├── OpenFeign
+│      ├── WebClient
+│      ├── RestClient
+│      └── gRPC
+│
+└── 2. Asynchronous
+       ├── Apache Kafka
+       ├── RabbitMQ
+       ├── ActiveMQ
+       └── Other Message Brokers
+```
+
+## 1. Synchronous Communication
+
+The calling service **waits for the response**.
+
+Example:
+
+```text
+Order Service
+     |
+     | HTTP Request
+     ↓
+Payment Service
+     |
+     | Response
+     ↓
+Order Service
+```
+
+### Common ways
+
+| Method         | Technology        | Typical use                         |
+| -------------- | ----------------- | ----------------------------------- |
+| **REST API**   | HTTP + JSON       | Most common                         |
+| **RestClient** | Spring            | Modern synchronous HTTP client      |
+| **WebClient**  | Spring WebFlux    | Non-blocking HTTP                   |
+| **OpenFeign**  | Spring Cloud      | Declarative REST communication      |
+| **gRPC**       | HTTP/2 + Protobuf | High-performance service-to-service |
+
+---
+
+# 2. Asynchronous Communication
+
+The calling service **doesn't wait for an immediate response**.
+
+Example:
+
+```text
+Order Service
+     |
+     | OrderCreated event
+     ↓
+   Kafka
+     |
+     ├────────→ Payment Service
+     |
+     ├────────→ Inventory Service
+     |
+     └────────→ Notification Service
+```
+
+### Common technologies
+
+| Technology            | Communication           |
+| --------------------- | ----------------------- |
+| **Kafka**             | Event/message streaming |
+| **RabbitMQ**          | Message queue           |
+| **ActiveMQ**          | Message broker          |
+| **AWS SQS/SNS**       | Cloud messaging         |
+| **Azure Service Bus** | Cloud messaging         |
+
+---
+
+# 3. REST vs Feign vs WebClient vs gRPC
+
+These are sometimes confusing because they're not all completely separate communication protocols.
+
+For example:
+
+```text
+REST
+ ↑
+HTTP API
+ ↑
+Can be called using:
+   ├── RestClient
+   ├── WebClient
+   └── OpenFeign
+```
+
+So:
+
+### REST + RestClient
+
+```text
+Order Service
+     |
+     | HTTP/REST
+     ↓
+Payment Service
+```
+
+### REST + OpenFeign
+
+```java
+@FeignClient(name = "payment-service")
+public interface PaymentClient {
+
+    @GetMapping("/payments/{id}")
+    Payment getPayment(@PathVariable Long id);
+}
+```
+
+Internally:
+
+```text
+Feign
+  ↓
+HTTP
+  ↓
+REST API
+```
+
+### REST + WebClient
+
+```text
+Order Service
+      |
+      ↓
+   WebClient
+      |
+      ↓
+   HTTP/REST
+      |
+      ↓
+Payment Service
+```
+
+---
+
+# 4. The easiest interview classification
+
+Remember:
+
+```text
+          Microservice Communication
+                    |
+          ┌─────────┴─────────┐
+          ↓                   ↓
+      SYNCHRONOUS         ASYNCHRONOUS
+          |                   |
+     "Wait for              "Don't wait"
+      response"
+          |                   |
+    ┌─────┼─────┐        ┌────┼────┐
+    ↓     ↓     ↓        ↓    ↓    ↓
+  REST  gRPC  WebClient Kafka RabbitMQ
+    |
+ ┌──┼────────┐
+ ↓  ↓        ↓
+Feign RestClient WebClient
+```
+
+## 5. What should you learn for Spring Boot interviews?
+
+I'd prioritize them in this order:
+
+**Synchronous:**
+
+1. REST API
+2. OpenFeign ⭐⭐⭐
+3. RestClient ⭐⭐⭐
+4. WebClient ⭐⭐
+5. gRPC ⭐⭐
+
+**Asynchronous:**
+
+6. Kafka ⭐⭐⭐
+7. RabbitMQ ⭐⭐
+8. Other message brokers
+
+And don't forget the infrastructure around them:
+
+```text
+Service Discovery
+      +
+API Gateway
+      +
+Load Balancing
+      +
+Circuit Breaker
+      +
+Retry / Timeout
+      +
+Distributed Tracing
+```
+
+These aren't communication methods themselves, but they are commonly used **with** microservice communication.
+------------------------
+Yes. Let's implement the **two synchronous REST communication approaches** you mentioned:
+
+1. **REST / HTTP using `RestClient`**
+2. **REST / HTTP using OpenFeign**
+
+We'll use the same real-world scenario for both so the difference is easy to understand.
+
+---
+
+# Scenario: Order Service → Payment Service
+
+We have two microservices:
+
+```text
+┌──────────────────┐
+│   Order Service  │
+│   Port: 8081     │
+└────────┬─────────┘
+         │
+         │ HTTP REST
+         ↓
+┌──────────────────┐
+│ Payment Service  │
+│   Port: 8082     │
+└──────────────────┘
+```
+
+When the client calls:
+
+```text
+POST /orders
+```
+
+the Order Service calls Payment Service:
+
+```text
+Order Service
+     |
+     | POST /payments
+     ↓
+Payment Service
+     |
+     | Payment response
+     ↓
+Order Service
+```
+
+---
+
+# Part 1 — Payment Service
+
+First create the **Payment Service**, because Order Service will call it.
+
+## 1. Payment DTO
+
+```java
+package com.example.payment.dto;
+
+public class PaymentRequest {
+
+    private Long orderId;
+    private double amount;
+
+    public Long getOrderId() {
+        return orderId;
+    }
+
+    public void setOrderId(Long orderId) {
+        this.orderId = orderId;
+    }
+
+    public double getAmount() {
+        return amount;
+    }
+
+    public void setAmount(double amount) {
+        this.amount = amount;
+    }
+}
+```
+
+---
+
+## 2. Payment Response
+
+```java
+package com.example.payment.dto;
+
+public class PaymentResponse {
+
+    private Long paymentId;
+    private Long orderId;
+    private String status;
+
+    public PaymentResponse() {
+    }
+
+    public PaymentResponse(
+            Long paymentId,
+            Long orderId,
+            String status) {
+
+        this.paymentId = paymentId;
+        this.orderId = orderId;
+        this.status = status;
+    }
+
+    public Long getPaymentId() {
+        return paymentId;
+    }
+
+    public Long getOrderId() {
+        return orderId;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+}
+```
+
+---
+
+# 3. Payment Controller
+
+```java
+package com.example.payment.controller;
+
+import com.example.payment.dto.PaymentRequest;
+import com.example.payment.dto.PaymentResponse;
+
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/payments")
+public class PaymentController {
+
+    @PostMapping
+    public PaymentResponse makePayment(
+            @RequestBody PaymentRequest request) {
+
+        System.out.println(
+                "Processing payment for order: "
+                        + request.getOrderId());
+
+        return new PaymentResponse(
+                1001L,
+                request.getOrderId(),
+                "SUCCESS"
+        );
+    }
+}
+```
+
+Payment Service is now available at:
+
+```text
+POST http://localhost:8082/payments
+```
+
+---
+
+# 4. Payment Service Port
+
+```properties
+server.port=8082
+```
+
+Now we have:
+
+```text
+Payment Service
+localhost:8082
+```
+
+---
+
+# Part 2 — Order Service
+
+Now create another Spring Boot application.
+
+```text
+Order Service
+Port: 8081
+```
+
+The Order Service needs to call:
+
+```text
+http://localhost:8082/payments
+```
+
+---
+
+# Approach 1 — REST using RestClient
+
+`RestClient` is Spring's modern synchronous HTTP client.
+
+The flow is:
+
+```text
+Order Controller
+      ↓
+Order Service
+      ↓
+RestClient
+      ↓
+HTTP POST
+      ↓
+Payment Service
+```
+
+---
+
+# 5. Add Web Dependency
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+</dependency>
+```
+
+---
+
+# 6. Create PaymentClient using RestClient
+
+```java
+package com.example.order.client;
+
+import com.example.order.dto.PaymentRequest;
+import com.example.order.dto.PaymentResponse;
+
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+
+@Component
+public class PaymentClient {
+
+    private final RestClient restClient;
+
+    public PaymentClient(RestClient restClient) {
+        this.restClient = restClient;
+    }
+
+    public PaymentResponse makePayment(
+            PaymentRequest request) {
+
+        return restClient
+                .post()
+                .uri("/payments")
+                .body(request)
+                .retrieve()
+                .body(PaymentResponse.class);
+    }
+}
+```
+
+---
+
+# 7. Configure RestClient
+
+```java
+package com.example.order.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestClient;
+
+@Configuration
+public class RestClientConfig {
+
+    @Bean
+    public RestClient restClient() {
+
+        return RestClient.builder()
+                .baseUrl("http://localhost:8082")
+                .build();
+    }
+}
+```
+
+Now:
+
+```text
+RestClient
+    ↓
+baseUrl
+    ↓
+http://localhost:8082
+```
+
+When you write:
+
+```java
+.uri("/payments")
+```
+
+the actual URL becomes:
+
+```text
+http://localhost:8082/payments
+```
+
+---
+
+# 8. Order DTO
+
+```java
+package com.example.order.dto;
+
+public class PaymentRequest {
+
+    private Long orderId;
+    private double amount;
+
+    public PaymentRequest() {
+    }
+
+    public PaymentRequest(
+            Long orderId,
+            double amount) {
+
+        this.orderId = orderId;
+        this.amount = amount;
+    }
+
+    public Long getOrderId() {
+        return orderId;
+    }
+
+    public double getAmount() {
+        return amount;
+    }
+}
+```
+
+---
+
+# 9. Payment Response DTO in Order Service
+
+The Order Service needs a class matching the Payment Service response.
+
+```java
+package com.example.order.dto;
+
+public class PaymentResponse {
+
+    private Long paymentId;
+    private Long orderId;
+    private String status;
+
+    public PaymentResponse() {
+    }
+
+    public Long getPaymentId() {
+        return paymentId;
+    }
+
+    public Long getOrderId() {
+        return orderId;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+}
+```
+
+---
+
+# 10. Order Service
+
+```java
+package com.example.order.service;
+
+import com.example.order.client.PaymentClient;
+import com.example.order.dto.PaymentRequest;
+import com.example.order.dto.PaymentResponse;
+
+import org.springframework.stereotype.Service;
+
+@Service
+public class OrderService {
+
+    private final PaymentClient paymentClient;
+
+    public OrderService(
+            PaymentClient paymentClient) {
+
+        this.paymentClient = paymentClient;
+    }
+
+    public PaymentResponse createOrder(
+            Long orderId,
+            double amount) {
+
+        PaymentRequest request =
+                new PaymentRequest(
+                        orderId,
+                        amount
+                );
+
+        return paymentClient.makePayment(request);
+    }
+}
+```
+
+---
+
+# 11. Order Controller
+
+```java
+package com.example.order.controller;
+
+import com.example.order.service.OrderService;
+import com.example.order.dto.PaymentResponse;
+
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/orders")
+public class OrderController {
+
+    private final OrderService orderService;
+
+    public OrderController(
+            OrderService orderService) {
+
+        this.orderService = orderService;
+    }
+
+    @PostMapping("/{id}/payment")
+    public PaymentResponse createOrder(
+            @PathVariable Long id,
+            @RequestParam double amount) {
+
+        return orderService.createOrder(
+                id,
+                amount
+        );
+    }
+}
+```
+
+---
+
+# 12. Test RestClient
+
+Start:
+
+```text
+Payment Service → 8082
+Order Service   → 8081
+```
+
+Call:
+
+```text
+POST http://localhost:8081/orders/10/payment?amount=5000
+```
+
+Flow:
+
+```text
+Client
+  |
+  | POST /orders/10/payment
+  ↓
+Order Service
+  |
+  ↓
+OrderController
+  |
+  ↓
+OrderService
+  |
+  ↓
+PaymentClient
+  |
+  ↓
+RestClient
+  |
+  | POST http://localhost:8082/payments
+  ↓
+Payment Service
+  |
+  ↓
+PaymentController
+  |
+  ↓
+PaymentResponse
+  |
+  ↓
+Order Service
+  |
+  ↓
+Client
+```
+
+Response:
+
+```json
+{
+    "paymentId": 1001,
+    "orderId": 10,
+    "status": "SUCCESS"
+}
+```
+
+---
+
+# Approach 2 — OpenFeign
+
+Now let's implement the **same scenario using OpenFeign**.
+
+The biggest difference is:
+
+### RestClient
+
+You manually write the HTTP call:
+
+```java
+restClient
+    .post()
+    .uri("/payments")
+    .body(request)
+    .retrieve()
+    .body(PaymentResponse.class);
+```
+
+### Feign
+
+You define an interface:
+
+```java
+@FeignClient(...)
+public interface PaymentClient {
+
+    @PostMapping("/payments")
+    PaymentResponse makePayment(
+            @RequestBody PaymentRequest request);
+}
+```
+
+Feign generates the HTTP implementation for you.
+
+---
+
+# 13. Add OpenFeign Dependency
+
+In Order Service:
+
+```xml
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-openfeign</artifactId>
+</dependency>
+```
+
+You also need the appropriate Spring Cloud BOM/version compatible with your Spring Boot version.
+
+---
+
+# 14. Enable Feign
+
+In the main application:
+
+```java
+package com.example.order;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.openfeign.EnableFeignClients;
+
+@SpringBootApplication
+@EnableFeignClients
+public class OrderApplication {
+
+    public static void main(String[] args) {
+
+        SpringApplication.run(
+                OrderApplication.class,
+                args
+        );
+    }
+}
+```
+
+The important annotation is:
+
+```java
+@EnableFeignClients
+```
+
+It tells Spring:
+
+> Find my Feign clients and create implementations for them.
+
+---
+
+# 15. Create Feign Client
+
+```java
+package com.example.order.client;
+
+import com.example.order.dto.PaymentRequest;
+import com.example.order.dto.PaymentResponse;
+
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.*;
+
+@FeignClient(
+        name = "payment-service",
+        url = "http://localhost:8082"
+)
+public interface PaymentClient {
+
+    @PostMapping("/payments")
+    PaymentResponse makePayment(
+            @RequestBody PaymentRequest request);
+}
+```
+
+This is much simpler.
+
+You don't write:
+
+```java
+RestClient
+```
+
+code yourself.
+
+You simply describe the API.
+
+---
+
+# 16. Service remains almost the same
+
+```java
+package com.example.order.service;
+
+import com.example.order.client.PaymentClient;
+import com.example.order.dto.PaymentRequest;
+import com.example.order.dto.PaymentResponse;
+
+import org.springframework.stereotype.Service;
+
+@Service
+public class OrderService {
+
+    private final PaymentClient paymentClient;
+
+    public OrderService(
+            PaymentClient paymentClient) {
+
+        this.paymentClient = paymentClient;
+    }
+
+    public PaymentResponse createOrder(
+            Long orderId,
+            double amount) {
+
+        PaymentRequest request =
+                new PaymentRequest(
+                        orderId,
+                        amount
+                );
+
+        return paymentClient.makePayment(request);
+    }
+}
+```
+
+Notice this:
+
+```java
+paymentClient.makePayment(request);
+```
+
+It looks like a normal Java method call.
+
+But internally Feign does:
+
+```text
+Java Method
+     ↓
+Feign Proxy
+     ↓
+HTTP Request
+     ↓
+Payment Service
+```
+
+---
+
+# 17. What Feign does internally
+
+When you write:
+
+```java
+paymentClient.makePayment(request);
+```
+
+Feign understands:
+
+```java
+@PostMapping("/payments")
+```
+
+and:
+
+```java
+@RequestBody PaymentRequest
+```
+
+and generates an HTTP request similar to:
+
+```http
+POST /payments HTTP/1.1
+Content-Type: application/json
+
+{
+    "orderId": 10,
+    "amount": 5000
+}
+```
+
+It sends that to:
+
+```text
+http://localhost:8082/payments
+```
+
+---
+
+# 18. RestClient vs OpenFeign
+
+|                   | RestClient                      | OpenFeign                         |
+| ----------------- | ------------------------------- | --------------------------------- |
+| Type              | HTTP client                     | Declarative HTTP client           |
+| Code              | More manual                     | Less manual                       |
+| Interface         | Not required                    | Yes                               |
+| HTTP details      | You write them                  | Feign generates them              |
+| Spring Cloud      | Not required                    | Usually used with Spring Cloud    |
+| Service discovery | Needs integration/configuration | Integrates well with Spring Cloud |
+| Readability       | Good                            | Excellent                         |
+| Microservices     | Yes                             | Very common                       |
+
+---
+
+# 19. The most important conceptual difference
+
+### RestClient
+
+You tell Spring **how to make the HTTP call**:
+
+```java
+restClient
+    .post()
+    .uri("/payments")
+    .body(request)
+    .retrieve()
+    .body(PaymentResponse.class);
+```
+
+### Feign
+
+You tell Spring **what remote API you want**:
+
+```java
+@PostMapping("/payments")
+PaymentResponse makePayment(
+        @RequestBody PaymentRequest request);
+```
+
+Feign handles the HTTP implementation.
+
+---
+
+# 20. With Service Discovery
+
+In real microservices, you generally don't want:
+
+```java
+url = "http://localhost:8082"
+```
+
+because the Payment Service may have multiple instances:
+
+```text
+Payment Service
+
+Instance 1 → 10.0.0.10:8082
+Instance 2 → 10.0.0.11:8082
+Instance 3 → 10.0.0.12:8082
+```
+
+Then you can use service discovery:
+
+```text
+Order Service
+      |
+      ↓
+Service Discovery
+      |
+      ↓
+payment-service
+   /     |     \
+  ↓      ↓      ↓
+P1      P2      P3
+```
+
+Feign can integrate with Spring Cloud LoadBalancer/service discovery.
+
+The Feign client becomes conceptually:
+
+```java
+@FeignClient(name = "payment-service")
+public interface PaymentClient {
+
+    @PostMapping("/payments")
+    PaymentResponse makePayment(
+            @RequestBody PaymentRequest request);
+}
+```
+
+No hardcoded:
+
+```text
+localhost:8082
+```
+
+---
+
+# 21. Final architecture
+
+With Feign + Service Discovery:
+
+```text
+                         ┌─────────────────┐
+                         │ Service         │
+                         │ Discovery       │
+                         └────────┬────────┘
+                                  │
+                                  │
+┌───────────────┐                 │
+│ Order Service │                 │
+│               │                 │
+│ Controller    │                 │
+│      ↓        │                 │
+│ Service       │                 │
+│      ↓        │                 │
+│ Feign Client ─┼─────────────────┤
+└───────────────┘                 │
+                                  ↓
+                         payment-service
+                           /     |     \
+                          ↓      ↓      ↓
+                         P1     P2      P3
+```
+
+---
+
+## 22. Remember these 4 layers
+
+For your Spring Boot microservices preparation, remember:
+
+```text
+Microservice-to-Microservice
+          |
+          ↓
+       HTTP/REST
+          |
+     ┌────┴────┐
+     ↓         ↓
+ RestClient   Feign
+     |         |
+ Manual       Declarative
+ HTTP         HTTP
+```
+
+### Memory trick
+
+**RestClient = "I write the HTTP call."**
+
+**Feign = "I define the interface; Feign writes the HTTP call."**
+
+And both are:
+
+> **Synchronous communication** — Order Service waits for Payment Service's response before continuing.

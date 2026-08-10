@@ -1,0 +1,872 @@
+Absolutely. Below is a **real-time REST API scenario + Spring Boot controller code + Client → Server → Client flow** for **each 3XX status code**.
+
+> **Important:** 3XX codes are generally **redirection/caching-related**, not errors.
+
+---
+
+# 3XX HTTP Status Codes — Real-Time Examples
+
+| Code    | Name               | Simple Meaning                       | Real-Time Scenario                  |
+| ------- | ------------------ | ------------------------------------ | ----------------------------------- |
+| **300** | Multiple Choices   | Server has multiple possible choices | Multiple product representations    |
+| **301** | Moved Permanently  | URL permanently moved                | Old product URL → new product URL   |
+| **302** | Found              | URL temporarily moved                | Sale page temporarily redirected    |
+| **303** | See Other          | Go to another URL using GET          | POST order → GET order result       |
+| **304** | Not Modified       | Use your cached version              | Browser cached CSS is still valid   |
+| **305** | Use Proxy          | Client should use a proxy            | **Obsolete**                        |
+| **306** | Unused             | Reserved status code                 | **Unused**                          |
+| **307** | Temporary Redirect | Temporary redirect, preserve method  | POST payment → POST new payment URL |
+| **308** | Permanent Redirect | Permanent redirect, preserve method  | POST API permanently moved          |
+
+| **Code** | **పేరు**           | **సింపుల్ అర్థం**                                        | **Real-Time Scenario**                                           |
+| -------- | ------------------ | -------------------------------------------------------- | ---------------------------------------------------------------- |
+| **300**  | Multiple Choices   | Server దగ్గర **ఒకటి కంటే ఎక్కువ ఎంపికలు** ఉన్నాయి        | ఒక productకి JSON, XML, HTML వంటి multiple representations ఉండటం |
+| **301**  | Moved Permanently  | URL **శాశ్వతంగా మారింది**                                | `/old-product` → `/products/101`                                 |
+| **302**  | Found              | URL **తాత్కాలికంగా మారింది**                             | `/sale` → `/summer-sale`                                         |
+| **303**  | See Other          | **మరొక URLకి GET request** పంపాలి                        | `POST /orders` → `GET /orders/101`                               |
+| **304**  | Not Modified       | Client దగ్గర ఉన్న **cached data ఇంకా validగా ఉంది**      | Browserలో ఉన్న cached CSS/dataనే ఉపయోగించడం                      |
+| **305**  | Use Proxy          | Client **specified proxyని ఉపయోగించాలి**                 | **Obsolete — ప్రస్తుతం ఉపయోగించకూడదు**                           |
+| **306**  | Unused             | ఈ status code **ప్రస్తుతం ఉపయోగంలో లేదు**                | **Reserved / Unused**                                            |
+| **307**  | Temporary Redirect | URL తాత్కాలికంగా మారింది, **HTTP methodని అలాగే ఉంచాలి** | `POST /payment` → `POST /new-payment`                            |
+| **308**  | Permanent Redirect | URL శాశ్వతంగా మారింది, **HTTP methodని అలాగే ఉంచాలి**    | `POST /payment` → `POST /v2/payment`                             |
+
+| Code    | గుర్తుపెట్టుకోవడానికి          |
+| ------- | ------------------------------ |
+| **300** | **ఎంపికలు ఉన్నాయి**            |
+| **301** | **శాశ్వతంగా మారింది**          |
+| **302** | **తాత్కాలికంగా మారింది**       |
+| **303** | **మరొక URLకి GET**             |
+| **304** | **Cached dataనే ఉపయోగించు**    |
+| **305** | **Proxy ఉపయోగించు — Obsolete** |
+| **306** | **Unused**                     |
+| **307** | **Temporary + Same Method**    |
+| **308** | **Permanent + Same Method**    |
+
+301 → "It permanently moved here."
+302 → "It temporarily moved here."
+303 → "Go see this other URL."
+307 → "Temporarily go here, keep the same method."
+308 → "Permanently go here, keep the same method."
+
+---
+
+# 300 — Multiple Choices
+
+### Real-time scenario
+
+Suppose your application has multiple representations of a product:
+
+```text
+/products/101
+```
+
+The server says:
+
+> "There are multiple possible representations. Choose one."
+
+For example:
+
+```text
+/products/101?format=json
+/products/101?format=xml
+/products/101?format=html
+```
+
+### Controller
+
+```java
+@GetMapping("/products/101")
+public ResponseEntity<Void> productChoices() {
+
+    return ResponseEntity
+            .status(HttpStatus.MULTIPLE_CHOICES)
+            .header("Location", "/products/101?format=json")
+            .build();
+}
+```
+
+Response:
+
+```http
+300 Multiple Choices
+Location: /products/101?format=json
+```
+
+### Flow
+
+```text
+Client
+   |
+   | GET /products/101
+   ↓
+Server
+   |
+   | 300 Multiple Choices
+   | Multiple representations available
+   ↓
+Client
+   |
+   | Selects one representation
+   ↓
+GET /products/101?format=json
+```
+
+### Important
+
+`300` means:
+
+> **"There are multiple possible choices."**
+
+It does **not necessarily mean the browser automatically chooses one**. The client/application may need to choose.
+
+---
+
+# 301 — Moved Permanently
+
+This is the example we discussed.
+
+### Scenario
+
+Old URL:
+
+```text
+/products/old-product
+```
+
+New URL:
+
+```text
+/products/101
+```
+
+### Controller
+
+```java
+@GetMapping("/old-product")
+public ResponseEntity<Void> oldProduct() {
+
+    return ResponseEntity
+            .status(HttpStatus.MOVED_PERMANENTLY)
+            .location(URI.create("/products/101"))
+            .build();
+}
+```
+
+### Flow
+
+```text
+Client
+   |
+   | GET /old-product
+   ↓
+Server
+   |
+   | 301
+   | Location: /products/101
+   ↓
+Client
+   |
+   | GET /products/101
+   ↓
+Server
+   |
+   | 200 OK
+   ↓
+Client
+```
+
+### Meaning
+
+> **"This resource permanently moved. Use the new URL."**
+
+---
+
+# 302 — Found
+
+### Real-time scenario
+
+Suppose your company has:
+
+```text
+/sale
+```
+
+but the sale page is temporarily available at:
+
+```text
+/summer-sale
+```
+
+### Controller
+
+```java
+@GetMapping("/sale")
+public ResponseEntity<Void> sale() {
+
+    return ResponseEntity
+            .status(HttpStatus.FOUND)
+            .location(URI.create("/summer-sale"))
+            .build();
+}
+```
+
+Response:
+
+```http
+302 Found
+Location: /summer-sale
+```
+
+### Flow
+
+```text
+Client
+   |
+   | GET /sale
+   ↓
+Server
+   |
+   | 302 Found
+   | Location: /summer-sale
+   ↓
+Client
+   |
+   | GET /summer-sale
+   ↓
+Server
+   |
+   | 200 OK
+   ↓
+Client
+```
+
+### Difference from 301
+
+```text
+301 → Permanent
+302 → Temporary
+```
+
+---
+
+# 303 — See Other
+
+This one is very useful after **POST** requests.
+
+### Real-time scenario
+
+User creates an order:
+
+```http
+POST /orders
+```
+
+Server creates order `101`.
+
+Instead of returning the entire order page directly, server says:
+
+> "See the order at this other URL."
+
+### Controller
+
+```java
+@PostMapping("/orders")
+public ResponseEntity<Void> createOrder() {
+
+    // Create order
+    int orderId = 101;
+
+    return ResponseEntity
+            .status(HttpStatus.SEE_OTHER)
+            .location(URI.create("/orders/" + orderId))
+            .build();
+}
+```
+
+Response:
+
+```http
+303 See Other
+Location: /orders/101
+```
+
+Browser then makes:
+
+```http
+GET /orders/101
+```
+
+### Flow
+
+```text
+Client
+   |
+   | POST /orders
+   ↓
+Server
+   |
+   | Create order
+   |
+   | 303 See Other
+   | Location: /orders/101
+   ↓
+Client
+   |
+   | GET /orders/101
+   ↓
+Server
+   |
+   | 200 OK
+   | Order details
+   ↓
+Client
+```
+
+### Why 303?
+
+It is commonly used for:
+
+```text
+POST
+ ↓
+Create something
+ ↓
+303
+ ↓
+GET result
+```
+
+This is the **Post/Redirect/Get (PRG)** pattern.
+
+---
+
+# 304 — Not Modified
+
+This one is different.
+
+It is mainly related to **HTTP caching**.
+
+### Scenario
+
+Browser already has:
+
+```text
+users.json
+```
+
+in its cache.
+
+Browser asks:
+
+> "Has this file changed?"
+
+It sends:
+
+```http
+GET /users.json
+If-None-Match: "abc123"
+```
+
+### Controller
+
+A simplified example:
+
+```java
+@GetMapping("/users.json")
+public ResponseEntity<Void> users(
+        @RequestHeader(value = "If-None-Match", required = false)
+        String etag) {
+
+    String currentEtag = "\"abc123\"";
+
+    if (currentEtag.equals(etag)) {
+
+        return ResponseEntity
+                .status(HttpStatus.NOT_MODIFIED)
+                .build();
+    }
+
+    return ResponseEntity
+            .ok()
+            .eTag(currentEtag)
+            .build();
+}
+```
+
+### Flow
+
+```text
+Browser
+   |
+   | GET /users.json
+   | If-None-Match: "abc123"
+   ↓
+Server
+   |
+   | Compare ETag
+   |
+   | Same version
+   ↓
+   | 304 Not Modified
+   ↓
+Browser
+   |
+   | Use cached users.json
+```
+
+### Important
+
+The server does **not send the entire response again**.
+
+```text
+304
+ ↓
+Use existing cached response
+```
+
+So:
+
+> **304 = "Your cached copy is still valid."**
+
+---
+
+# 305 — Use Proxy
+
+### Important: Obsolete
+
+Historically, `305` meant:
+
+> **"Use this proxy to access the requested resource."**
+
+Conceptually:
+
+```http
+305 Use Proxy
+Location: http://proxy.example.com
+```
+
+A historical-style Spring example would be:
+
+```java
+@GetMapping("/old-proxy")
+public ResponseEntity<Void> useProxy() {
+
+    return ResponseEntity
+            .status(HttpStatus.USE_PROXY)
+            .header("Location", "http://proxy.example.com")
+            .build();
+}
+```
+
+But **do not use 305 in modern application development**.
+
+### Flow — historical concept
+
+```text
+Client
+   |
+   | Request
+   ↓
+Server
+   |
+   | 305 Use Proxy
+   | Use proxy.example.com
+   ↓
+Client
+   |
+   | Request through proxy
+   ↓
+Proxy
+   |
+   ↓
+Server
+```
+
+**Status:** ❌ Obsolete
+
+---
+
+# 306 — Unused
+
+`306` is **not a status code you should implement**.
+
+Historically it was associated with proxy redirection, but it was later reserved/unused.
+
+So there is no normal real-time REST scenario.
+
+```java
+// DON'T implement 306 in a normal REST API
+```
+
+Think:
+
+```text
+306 = Reserved / Unused
+```
+
+---
+
+# 307 — Temporary Redirect
+
+This is extremely important because it **preserves the HTTP method**.
+
+### Scenario
+
+Suppose your payment API temporarily moved:
+
+```text
+/payment
+```
+
+to:
+
+```text
+/new-payment
+```
+
+The original request is:
+
+```http
+POST /payment
+```
+
+### Controller
+
+```java
+@PostMapping("/payment")
+public ResponseEntity<Void> payment() {
+
+    return ResponseEntity
+            .status(HttpStatus.TEMPORARY_REDIRECT)
+            .location(URI.create("/new-payment"))
+            .build();
+}
+```
+
+Response:
+
+```http
+307 Temporary Redirect
+Location: /new-payment
+```
+
+The client should then send:
+
+```http
+POST /new-payment
+```
+
+### Flow
+
+```text
+Client
+   |
+   | POST /payment
+   | payment data
+   ↓
+Server
+   |
+   | 307 Temporary Redirect
+   | Location: /new-payment
+   ↓
+Client
+   |
+   | POST /new-payment
+   | SAME payment data
+   ↓
+Server
+   |
+   | 200 OK
+   ↓
+Client
+```
+
+### Key point
+
+```text
+307 → Temporary
+     +
+     Preserve HTTP method
+```
+
+---
+
+# 308 — Permanent Redirect
+
+308 is similar to 301, but it explicitly preserves the HTTP method.
+
+### Scenario
+
+Your payment API permanently moved:
+
+```text
+POST /payment
+```
+
+to:
+
+```text
+POST /v2/payment
+```
+
+### Controller
+
+```java
+@PostMapping("/payment")
+public ResponseEntity<Void> payment() {
+
+    return ResponseEntity
+            .status(HttpStatus.PERMANENT_REDIRECT)
+            .location(URI.create("/v2/payment"))
+            .build();
+}
+```
+
+Response:
+
+```http
+308 Permanent Redirect
+Location: /v2/payment
+```
+
+Client sends:
+
+```http
+POST /v2/payment
+```
+
+### Flow
+
+```text
+Client
+   |
+   | POST /payment
+   | payment data
+   ↓
+Server
+   |
+   | 308 Permanent Redirect
+   | Location: /v2/payment
+   ↓
+Client
+   |
+   | POST /v2/payment
+   | SAME payment data
+   ↓
+Server
+   |
+   | 200 OK
+   ↓
+Client
+```
+
+---
+
+# Most Important Comparison
+
+This is the part I recommend remembering for interviews:
+
+| Code    | Scenario              | Method preserved? | Permanent? |
+| ------- | --------------------- | ----------------: | ---------: |
+| **300** | Multiple choices      |           Depends |          — |
+| **301** | URL permanently moved |   ⚠️ Not reliably |          ✅ |
+| **302** | URL temporarily moved |   ⚠️ Not reliably |          ❌ |
+| **303** | Go to another URL     |           **GET** |          ❌ |
+| **304** | Use cached response   |               N/A |        N/A |
+| **305** | Use proxy             |          Obsolete |          — |
+| **306** | Reserved              |                 — |          — |
+| **307** | Temporary redirect    |         ✅ **Yes** |          ❌ |
+| **308** | Permanent redirect    |         ✅ **Yes** |          ✅ |
+
+---
+
+# 301 vs 302 vs 303 vs 307 vs 308
+
+### 301
+
+```text
+GET /old
+ ↓
+301
+ ↓
+GET /new
+```
+
+Permanent URL change.
+
+### 302
+
+```text
+GET /old
+ ↓
+302
+ ↓
+GET /new
+```
+
+Temporary URL change.
+
+### 303
+
+```text
+POST /orders
+ ↓
+303
+ ↓
+GET /orders/101
+```
+
+**Go to another resource using GET.**
+
+### 307
+
+```text
+POST /payment
+ ↓
+307
+ ↓
+POST /new-payment
+```
+
+**Temporary + preserve POST.**
+
+### 308
+
+```text
+POST /payment
+ ↓
+308
+ ↓
+POST /v2/payment
+```
+
+**Permanent + preserve POST.**
+
+---
+
+## Easy memory trick
+
+```text
+300 → Choose
+301 → Permanent
+302 → Temporary
+303 → See Other / GET
+304 → Cached copy is OK
+305 → Proxy (obsolete)
+306 → Unused
+307 → Temporary + Same Method
+308 → Permanent + Same Method
+```
+
+The **most practically important 3XX codes for modern Spring Boot REST APIs are 301, 302, 303, 304, 307, and 308**.
+
+
+-----------------------------------------------------------------------------
+
+Yes — **your understanding is correct**, with one small clarification.
+
+When the server returns:
+
+```http
+301 Moved Permanently
+Location: /users/101
+```
+
+it is telling the client:
+
+> **"The resource you requested is now available at `/users/101`."**
+
+### What happens
+
+**1. User initially requests:**
+
+```http
+GET /old-user
+```
+
+**2. Server responds:**
+
+```http
+301 Moved Permanently
+Location: /users/101
+```
+
+At this point, the server has **not sent the user data**. It has only given the new location.
+
+**3. Browser/client sees `Location` and normally follows the redirect automatically:**
+
+```http
+GET /users/101
+```
+
+**4. `/users/101` must have a corresponding endpoint**, for example:
+
+```java
+@GetMapping("/users/101")
+public User getUser() {
+    return new User(101, "John");
+}
+```
+
+or more commonly:
+
+```java
+@GetMapping("/users/{id}")
+public User getUser(@PathVariable int id) {
+    return userService.getUser(id);
+}
+```
+
+**5. Server finally responds:**
+
+```http
+200 OK
+```
+
+```json
+{
+    "id": 101,
+    "name": "John"
+}
+```
+
+### Complete flow
+
+```text
+Client
+  |
+  | GET /old-user
+  ↓
+Server
+  |
+  | 301
+  | Location: /users/101
+  ↓
+Client
+  |
+  | "Okay, I'll go to /users/101"
+  |
+  | GET /users/101
+  ↓
+Server
+  |
+  | Controller for /users/{id}
+  ↓
+  | 200 OK + User data
+  ↓
+Client
+```
+
+### One important correction
+
+You said:
+
+> "it only intimate use this `/users/101` for next time request."
+
+**Not exactly.** The redirect is primarily telling the client **where to go for the current request**. The client may also remember a `301` redirect and use the new URL for future requests, depending on caching/client behavior.
+
+So:
+
+**301 = "This resource has permanently moved; use this new URL."**
+
+And yes, **the client then makes another request to `/users/101`** to get the actual resource.

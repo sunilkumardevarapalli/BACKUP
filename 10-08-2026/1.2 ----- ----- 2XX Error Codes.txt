@@ -1,0 +1,1048 @@
+
+
+Note: `2xx` codes are **success codes, not error codes**.
+
+200 → Successful request
+201 → Resource successfully created
+
+202 → Request accepted for asynchronous processing. Server మీ requestని receive చేసి accept చేసింది, కానీ పని ఇంకా పూర్తవలేదు. అది 		   background/asynchronous processingలో ఉంది.
+
+203 → Request విజయవంతంగా process అయింది. కానీ మధ్యలో ఉన్న Proxy / API Gateway / intermediary, original responseలో కొంత మార్పు చేసింది.
+204 → Successful request, no response body
+205 → Request successful; client should reset its view/form 
+206 → Partial Content : Only part of the requested resource is returned: File/video range
+207 → Multi-Status :Multiple results/statuses in one response 
+208 → Already Reported:Resource was already reported  
+
+226 → IM Used: Response contains the result of an applied instance manipulation
+
+**2xx = Success**      ✅
+**3xx = Redirection**  🔄
+**4xx = Client error** ❌
+**5xx = Server error** ❌
+
+  
+226:
+
+తర్వాత city మాత్రమే మారింది:
+
+Hyderabad → Bangalore
+
+మళ్లీ మొత్తం data పంపకుండా, మారిన భాగాన్ని మాత్రమే పంపవచ్చు:
+
+{
+  "city": "Bangalore"
+}
+
+Client దగ్గర ఇప్పటికే:
+
+name = John
+city = Hyderabad
+  
+203:
+
+Client
+   |
+   | GET /api/users
+   ↓
+API Gateway / Proxy
+   |
+   | GET /api/users
+   ↓
+Spring Boot
+   |
+   | 200 OK
+   | Original Response
+   ↓
+API Gateway
+   |
+   | Responseని modify/transform చేస్తుంది
+   ↓
+Client
+   |
+   | 203 Non-Authoritative Information
+
+
+
+
+-------------------------------------------------------------------------------------------------------------------------------
+
+### Simple Spring Boot example
+
+```java
+@PostMapping("/users")
+public ResponseEntity<User> createUser(@RequestBody User user) {
+
+    User savedUser = userService.save(user);
+
+    return ResponseEntity
+            .status(HttpStatus.CREATED)   // 201
+            .body(savedUser);
+}
+```
+
+## 1. `200 OK` — Request successful
+
+Most commonly used for `GET`, `PUT`, or `PATCH`.
+
+```java
+@GetMapping("/users/{id}")
+public ResponseEntity<User> getUser(@PathVariable Long id) {
+
+    User user = userService.getUser(id);
+
+    return ResponseEntity
+            .ok(user);   // HTTP 200
+}
+```
+
+Response:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+    "id": 101,
+    "name": "Sunil"
+}
+```
+
+--
+
+
+You can also send a `Location` header:
+
+```java
+@PostMapping("/users")
+public ResponseEntity<User> createUser(
+        @RequestBody User user) {
+
+    User savedUser = userService.save(user);
+
+    URI location = URI.create("/users/" + savedUser.getId());
+
+    return ResponseEntity
+            .created(location)    // 201
+            .body(savedUser);
+}
+```
+
+---
+
+# 3. `202 Accepted` — Accepted for processing
+
+Used when the server **accepts the request but processing is not finished yet**.
+
+Very common for asynchronous processing.
+
+```java
+@PostMapping("/reports")
+public ResponseEntity<String> generateReport() {
+
+    reportService.startAsyncReportGeneration();
+
+    return ResponseEntity
+            .status(HttpStatus.ACCEPTED)   // HTTP 202
+            .body("Report generation started");
+}
+```
+
+Response:
+
+```http
+HTTP/1.1 202 Accepted
+
+Report generation started
+```
+
+### Real-time example
+
+```text
+Client
+   |
+   | POST /reports
+   ↓
+Controller
+   |
+   | Start background job
+   ↓
+202 Accepted
+   |
+   ↓
+Client does NOT wait for report completion
+```
+
+---
+
+# 4. `203 Non-Authoritative Information`
+
+This is **rare in normal REST APIs**.
+
+It means the response is successful, but the information returned may have been modified by an intermediary such as a proxy.
+
+Spring Boot:
+
+```java
+@GetMapping("/users")
+public ResponseEntity<List<User>> getUsers() {
+
+    List<User> users = userService.getUsers();
+
+    return ResponseEntity
+            .status(HttpStatus.NON_AUTHORITATIVE_INFORMATION) // 203
+            .body(users);
+}
+```
+
+Response:
+
+```http
+HTTP/1.1 203 Non-Authoritative Information
+
+[
+    {
+        "id": 101,
+        "name": "Sunil"
+    }
+]
+```
+
+**Real-world REST APIs rarely need to explicitly return 203.**
+
+---
+
+# 5. `204 No Content` — Success but no response body
+
+Very commonly used for `DELETE` or updates where you don't need to return data.
+
+```java
+@DeleteMapping("/users/{id}")
+public ResponseEntity<Void> deleteUser(
+        @PathVariable Long id) {
+
+    userService.deleteUser(id);
+
+    return ResponseEntity
+            .noContent()    // HTTP 204
+            .build();
+}
+```
+
+Response:
+
+```http
+HTTP/1.1 204 No Content
+```
+
+There is **no response body**.
+
+### Example
+
+```text
+DELETE /users/101
+
+        ↓
+
+Database
+Delete user 101
+
+        ↓
+
+204 No Content
+```
+
+---
+
+# 6. `205 Reset Content` — Reset the client's view
+
+This is less commonly used.
+
+For example, after successfully processing a form, you can tell the client to reset the form.
+
+```java
+@PostMapping("/form")
+public ResponseEntity<Void> submitForm(
+        @RequestBody UserForm form) {
+
+    formService.save(form);
+
+    return ResponseEntity
+            .status(HttpStatus.RESET_CONTENT)   // 205
+            .build();
+}
+```
+
+Response:
+
+```http
+HTTP/1.1 205 Reset Content
+```
+
+The client can reset its form/UI.
+
+---
+
+# 7. `206 Partial Content` — Partial response
+
+Used when the client requests **only a portion of a resource**, especially files, video, audio, etc.
+
+For example:
+
+```http
+GET /videos/movie.mp4
+Range: bytes=0-999
+```
+
+Controller:
+
+```java
+@GetMapping("/video")
+public ResponseEntity<byte[]> getVideo(
+        @RequestHeader("Range") String range) {
+
+    byte[] partialVideo = videoService.getPartialVideo(range);
+
+    return ResponseEntity
+            .status(HttpStatus.PARTIAL_CONTENT)   // 206
+            .header("Content-Range", "bytes 0-999/5000")
+            .body(partialVideo);
+}
+```
+
+Response:
+
+```http
+HTTP/1.1 206 Partial Content
+Content-Range: bytes 0-999/5000
+
+<partial data>
+```
+
+### Real-time example
+
+```text
+Large Video
+5000 bytes
+
+Client requests:
+
+bytes 0-999
+
+Server sends:
+
+206 Partial Content
+
+Only bytes 0-999
+```
+
+This is useful for **video streaming and large file downloads**.
+
+---
+
+# 8. `207 Multi-Status`
+
+This is mainly associated with **WebDAV**, not normal REST APIs.
+
+It allows one response to contain the status of multiple operations/resources.
+
+Example:
+
+```java
+@GetMapping("/users/status")
+public ResponseEntity<Map<String, Object>> getUsersStatus() {
+
+    Map<String, Object> result = new HashMap<>();
+
+    result.put("user101", "200 OK");
+    result.put("user102", "404 Not Found");
+    result.put("user103", "200 OK");
+
+    return ResponseEntity
+            .status(HttpStatus.MULTI_STATUS)   // 207
+            .body(result);
+}
+```
+
+Response:
+
+```http
+HTTP/1.1 207 Multi-Status
+
+{
+    "user101": "200 OK",
+    "user102": "404 Not Found",
+    "user103": "200 OK"
+}
+```
+
+**Important:** You generally won't use `207` in a typical Spring Boot REST API.
+
+---
+
+# 9. `208 Already Reported`
+
+Also primarily used with **WebDAV**.
+
+It indicates that a resource has already been reported in an earlier part of the response.
+
+Spring example:
+
+```java
+@GetMapping("/resources")
+public ResponseEntity<String> getResources() {
+
+    return ResponseEntity
+            .status(HttpStatus.ALREADY_REPORTED)   // 208
+            .body("Resource already reported");
+}
+```
+
+Response:
+
+```http
+HTTP/1.1 208 Already Reported
+
+Resource already reported
+```
+
+**Rare in normal REST API development.**
+
+---
+
+# 10. `226 IM Used`
+
+This is an advanced HTTP status code related to **instance manipulations/delta encoding**.
+
+Spring controller example:
+
+```java
+@GetMapping("/document")
+public ResponseEntity<String> getDocument() {
+
+    String modifiedDocument = "Modified document content";
+
+    return ResponseEntity
+            .status(226)       // HTTP 226
+            .body(modifiedDocument);
+}
+```
+
+Response:
+
+```http
+HTTP/1.1 226 IM Used
+
+Modified document content
+```
+
+This is **very rarely used in normal Spring Boot REST APIs**.
+
+---
+
+# Complete 2xx Controller Summary
+
+| Code    | Meaning                       | Spring Boot Controller                       | Common REST Usage |
+| ------- | ----------------------------- | -------------------------------------------- | ----------------- |
+| **200** | OK                            | `ResponseEntity.ok()`                        | ⭐⭐⭐⭐⭐             |
+| **201** | Created                       | `ResponseEntity.created()`                   | ⭐⭐⭐⭐⭐             |
+| **202** | Accepted                      | `ResponseEntity.status(HttpStatus.ACCEPTED)` | ⭐⭐⭐⭐              |
+| **203** | Non-Authoritative Information | `HttpStatus.NON_AUTHORITATIVE_INFORMATION`   | ⭐                 |
+| **204** | No Content                    | `ResponseEntity.noContent()`                 | ⭐⭐⭐⭐⭐             |
+| **205** | Reset Content                 | `HttpStatus.RESET_CONTENT`                   | ⭐                 |
+| **206** | Partial Content               | `HttpStatus.PARTIAL_CONTENT`                 | ⭐⭐⭐               |
+| **207** | Multi-Status                  | `HttpStatus.MULTI_STATUS`                    | ⭐                 |
+| **208** | Already Reported              | `HttpStatus.ALREADY_REPORTED`                | ⭐                 |
+| **226** | IM Used                       | `status(226)`                                | ⭐                 |
+
+## The 4 you should remember for Spring Boot interviews
+
+```java
+// 200
+return ResponseEntity.ok(data);
+
+// 201
+return ResponseEntity.status(HttpStatus.CREATED).body(data);
+
+// 202
+return ResponseEntity.status(HttpStatus.ACCEPTED)
+        .body("Request accepted for processing");
+
+// 204
+return ResponseEntity.noContent().build();
+```
+
+**In real Spring Boot REST development, `200`, `201`, `202`, and `204` are by far the most important 2xx responses.**
+----------------------------------------------------
+Yes. For **203 Non-Authoritative Information**, the important point is that your **Spring Boot controller can explicitly return HTTP 203**, but in normal REST development you rarely need to do this.
+
+### Spring Boot Controller
+
+```java
+@RestController
+@RequestMapping("/users")
+public class UserController {
+
+    @GetMapping("/{id}")
+    public ResponseEntity<User> getUser(@PathVariable Long id) {
+
+        User user = new User(id, "Sunil");
+
+        return ResponseEntity
+                .status(HttpStatus.NON_AUTHORITATIVE_INFORMATION)
+                .body(user);
+    }
+}
+```
+
+### What happens?
+
+Client sends:
+
+```http
+GET /users/101
+```
+
+Controller executes:
+
+```java
+return ResponseEntity
+        .status(HttpStatus.NON_AUTHORITATIVE_INFORMATION)
+        .body(user);
+```
+
+Server sends:
+
+```http
+HTTP/1.1 203 Non-Authoritative Information
+Content-Type: application/json
+
+{
+    "id": 101,
+    "name": "Sunil"
+}
+```
+
+### Why 203?
+
+Suppose the request flow is:
+
+```text
+Client
+   |
+   | GET /users/101
+   ↓
+Proxy / Gateway / Cache
+   |
+   ↓
+Spring Boot Controller
+   |
+   ↓
+User data
+   |
+   ↓
+Proxy modifies/transforms the response
+   |
+   ↓
+Client
+```
+
+The **203** tells the client:
+
+> "The request succeeded, but the information you're receiving may not be exactly the original representation from the origin server."
+
+### Important distinction
+
+**203 does NOT mean:**
+
+```text
+❌ Server error
+❌ Request failed
+❌ Authentication problem
+❌ Cache error
+```
+
+It means:
+
+```text
+203 = Success
+     + response information may have been modified by an intermediary
+```
+
+### Controller imports
+
+```java
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/users")
+public class UserController {
+
+    @GetMapping("/{id}")
+    public ResponseEntity<User> getUser(@PathVariable Long id) {
+
+        User user = new User(id, "Sunil");
+
+        return ResponseEntity
+                .status(HttpStatus.NON_AUTHORITATIVE_INFORMATION)
+                .body(user);
+    }
+}
+```
+
+**Real-time note:** In a typical Spring Boot microservices application with an API Gateway/proxy, you normally use **200 OK** rather than manually returning 203. `203` is a specialized HTTP response for cases involving an intermediary transformation.
+
+
+--------------------------------
+Think of **203** like this:
+
+### Real-time example: API Gateway modifies the response
+
+Suppose you have:
+
+```text
+Client
+   ↓
+API Gateway / Proxy
+   ↓
+Spring Boot Server
+```
+
+Spring Boot has the original user data:
+
+```json
+{
+  "id": 101,
+  "name": "Sunil",
+  "email": "sunil@gmail.com"
+}
+```
+
+The **API Gateway** receives this response and removes the email for some reason:
+
+```json
+{
+  "id": 101,
+  "name": "Sunil"
+}
+```
+
+Then it sends:
+
+```http
+HTTP/1.1 203 Non-Authoritative Information
+```
+
+### Simple meaning
+
+```text
+Spring Boot → Original response
+                 ↓
+           API Gateway
+           modifies it
+                 ↓
+Client ← Modified response
+```
+
+So:
+
+**203 = Request was successful ✅ + response was modified by an intermediary 🔄**
+
+### Very simple comparison
+
+**200:**
+
+```text
+Server → Client
+        ↓
+Original response
+        ↓
+200 OK
+```
+
+**203:**
+
+```text
+Server → Proxy/Gateway → Client
+             ↓
+       Response modified
+             ↓
+            203
+```
+
+**Important:** The **Spring Boot controller itself normally returns 200**. The intermediary (proxy/gateway) may change the response to **203** when appropriate.
+
+-----------------------------------------------------------------------------------------------
+
+Yes. One important correction first:
+
+**203 Non-Authoritative Information does not specifically mean "response came from proxy/cache."** It means the response is successful, but the returned metadata/content **may not exactly match what the origin server generated**, because an intermediary transformed it.
+
+A proxy/cache **can** be an example.
+
+## Real-time example
+
+Let's imagine:
+
+```text
+Client
+   |
+   | GET /api/users
+   ↓
+Proxy / API Gateway / Cache
+   |
+   | Cache HIT?
+   |---- YES → return cached/modified response
+   |
+   |---- NO → call backend
+              ↓
+          User Service
+              ↓
+           Database
+```
+
+---
+
+# 1. Backend Controller
+
+Suppose your actual Spring Boot application has:
+
+```java
+@RestController
+@RequestMapping("/api")
+public class UserController {
+
+    @GetMapping("/users")
+    public ResponseEntity<List<User>> getUsers() {
+
+        List<User> users = List.of(
+                new User(1, "John"),
+                new User(2, "David")
+        );
+
+        return ResponseEntity.ok(users);
+    }
+}
+```
+
+Normally the backend returns:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+[
+  {"id":1,"name":"John"},
+  {"id":2,"name":"David"}
+]
+```
+
+---
+
+# 2. Now introduce a Proxy
+
+Architecture:
+
+```text
+Browser
+   |
+   | GET /api/users
+   ↓
+Proxy
+   |
+   | GET /api/users
+   ↓
+Spring Boot Application
+   |
+   ↓
+Database
+```
+
+The proxy sits **between the client and your Spring Boot application**.
+
+Examples of intermediaries include:
+
+* API Gateway
+* Reverse proxy
+* CDN
+* Caching proxy
+* Load balancer with caching/transformation features
+
+---
+
+# 3. Proxy gets the response
+
+Suppose Spring Boot returns:
+
+```json
+[
+  {"id":1,"name":"John"},
+  {"id":2,"name":"David"}
+]
+```
+
+The proxy receives it.
+
+The proxy could transform something about the response—for example, adding metadata:
+
+```json
+{
+  "source": "cache",
+  "users": [
+    {"id":1,"name":"John"},
+    {"id":2,"name":"David"}
+  ]
+}
+```
+
+If the intermediary has modified the representation or metadata in a way relevant to the response, it can return:
+
+```http
+HTTP/1.1 203 Non-Authoritative Information
+```
+
+---
+
+# 4. Simple Proxy Program
+
+You can simulate a proxy with another Spring Boot controller.
+
+### Proxy Controller
+
+```java
+@RestController
+@RequestMapping("/proxy")
+public class ProxyController {
+
+    private final RestClient restClient;
+
+    public ProxyController(RestClient.Builder builder) {
+        this.restClient = builder.build();
+    }
+
+    @GetMapping("/users")
+    public ResponseEntity<String> getUsers() {
+
+        // Call actual backend service
+        String response = restClient
+                .get()
+                .uri("http://localhost:8080/api/users")
+                .retrieve()
+                .body(String.class);
+
+        // Proxy modifies/adds information
+        String modifiedResponse =
+                "{ \"source\": \"proxy\", \"users\": "
+                + response
+                + " }";
+
+        // Return 203
+        return ResponseEntity
+                .status(HttpStatus.NON_AUTHORITATIVE_INFORMATION)
+                .body(modifiedResponse);
+    }
+}
+```
+
+Now your architecture is:
+
+```text
+Browser
+   |
+   | GET /proxy/users
+   ↓
+Proxy Application
+   |
+   | GET /api/users
+   ↓
+User Application
+   |
+   ↓
+Database
+```
+
+---
+
+# 5. What happens step by step?
+
+### Step 1
+
+Browser sends:
+
+```http
+GET /proxy/users
+```
+
+### Step 2
+
+Proxy receives it.
+
+```java
+@GetMapping("/users")
+public ResponseEntity<String> getUsers()
+```
+
+### Step 3
+
+Proxy calls backend:
+
+```java
+restClient
+    .get()
+    .uri("http://localhost:8080/api/users")
+```
+
+### Step 4
+
+Backend returns:
+
+```http
+200 OK
+```
+
+with:
+
+```json
+[
+  {"id":1,"name":"John"},
+  {"id":2,"name":"David"}
+]
+```
+
+### Step 5
+
+Proxy modifies the response:
+
+```java
+String modifiedResponse =
+    "{ \"source\": \"proxy\", \"users\": "
+    + response
+    + " }";
+```
+
+### Step 6
+
+Proxy returns:
+
+```java
+ResponseEntity
+    .status(HttpStatus.NON_AUTHORITATIVE_INFORMATION)
+    .body(modifiedResponse);
+```
+
+So the client receives:
+
+```http
+HTTP/1.1 203 Non-Authoritative Information
+Content-Type: application/json
+```
+
+```json
+{
+  "source": "proxy",
+  "users": [
+    {"id":1,"name":"John"},
+    {"id":2,"name":"David"}
+  ]
+}
+```
+
+---
+
+# Where does Cache come in?
+
+A cache can work like this:
+
+```text
+First request
+
+Browser
+   |
+   ↓
+Cache
+   |
+   | CACHE MISS
+   ↓
+Backend
+   |
+   ↓
+Database
+   |
+   ↓
+Cache stores response
+   |
+   ↓
+Browser
+```
+
+Then the second request:
+
+```text
+Browser
+   |
+   ↓
+Cache
+   |
+   | CACHE HIT
+   |
+   | No backend call
+   ↓
+Browser
+```
+
+For example:
+
+```text
+Request #1
+GET /api/users
+
+Cache → MISS
+Backend → Database
+Cache stores result
+
+
+Request #2
+GET /api/users
+
+Cache → HIT
+Backend is NOT called
+Cached response → Browser
+```
+
+### Important
+
+A **cache hit normally does not automatically mean 203**.
+
+For a normal cached response, you might still receive:
+
+```http
+200 OK
+```
+
+And headers may indicate caching, such as:
+
+```http
+Age: 30
+Cache-Control: max-age=60
+```
+
+**203 is specifically for a successful response that is non-authoritative because the intermediary transformed/modified the response or metadata.**
+
+### Easy way to remember
+
+```text
+200 → Origin's normal response
+
+203 → Successful response,
+      but intermediary modified it
+      so it may not exactly represent
+      the origin's response
+```
+
+So:
+
+**Proxy/cache = can be the intermediary.**
+**203 = tells the client the response is successful but non-authoritative/possibly transformed.**
+

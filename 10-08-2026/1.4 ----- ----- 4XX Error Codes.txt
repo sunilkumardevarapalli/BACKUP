@@ -1,0 +1,1136 @@
+Absolutely. For **4XX**, the important idea is:
+
+> **4XX = Client-side request problem** — the server received the request, but something about the request, authentication, authorization, resource, or client behavior is wrong.
+
+Below is a practical Spring Boot table and then **controller-level real-time examples for each commonly used 4XX code**.
+
+## 4XX HTTP Status Codes
+
+| Code    | Name                            | Simple Meaning                                   | Real-Time Scenario                       |
+| ------- | ------------------------------- | ------------------------------------------------ | ---------------------------------------- |
+| **400** | Bad Request                     | Request is invalid                               | Invalid JSON / missing required field    |
+| **401** | Unauthorized                    | Authentication is missing/invalid                | JWT token missing or expired             |
+| **402** | Payment Required                | Payment is required                              | Subscription/payment required            |
+| **403** | Forbidden                       | User is authenticated but not allowed            | Normal user accessing admin API          |
+| **404** | Not Found                       | Resource doesn't exist                           | `/users/999` doesn't exist               |
+| **405** | Method Not Allowed              | HTTP method isn't supported                      | `POST` sent to GET-only endpoint         |
+| **406** | Not Acceptable                  | Server can't provide requested representation    | Client requests unsupported format       |
+| **407** | Proxy Authentication Required   | Proxy authentication required                    | Corporate proxy requires authentication  |
+| **408** | Request Timeout                 | Server waited too long for request               | Client takes too long to send request    |
+| **409** | Conflict                        | Request conflicts with current state             | Duplicate email / version conflict       |
+| **410** | Gone                            | Resource permanently removed                     | Deleted API/resource                     |
+| **411** | Length Required                 | `Content-Length` required                        | Server requires request body length      |
+| **412** | Precondition Failed             | Request condition wasn't satisfied               | `If-Match` ETag doesn't match            |
+| **413** | Content Too Large               | Request body is too large                        | 100 MB upload when limit is 10 MB        |
+| **414** | URI Too Long                    | URL is too long                                  | Huge query parameters                    |
+| **415** | Unsupported Media Type          | Request format isn't supported                   | Sending XML when API accepts JSON        |
+| **416** | Range Not Satisfiable           | Requested range can't be fulfilled               | Asking bytes beyond file size            |
+| **417** | Expectation Failed              | Server can't meet `Expect` header                | Unsupported expectation                  |
+| **418** | I'm a teapot                    | Joke/status reserved for fun                     | Not a normal business API status         |
+| **421** | Misdirected Request             | Request went to wrong server                     | HTTP/2 routing issue                     |
+| **422** | Unprocessable Content           | Syntax is valid but data is semantically invalid | Invalid email/business validation        |
+| **423** | Locked                          | Resource is locked                               | Locked account/document                  |
+| **424** | Failed Dependency               | Dependent operation failed                       | Parent operation failed                  |
+| **425** | Too Early                       | Request may be replayed                          | TLS 0-RTT replay concern                 |
+| **426** | Upgrade Required                | Client must use another protocol                 | Upgrade to HTTPS/protocol                |
+| **428** | Precondition Required           | Request requires a precondition                  | `If-Match` required for update           |
+| **429** | Too Many Requests               | Rate limit exceeded                              | 101st API call within one minute         |
+| **431** | Request Header Fields Too Large | Headers are too large                            | Huge JWT/cookie/header                   |
+| **451** | Unavailable For Legal Reasons   | Access blocked for legal reasons                 | Content blocked due to legal requirement |
+
+---
+
+# 1. 400 — Bad Request
+
+### Real-time scenario
+
+Client sends invalid JSON:
+
+```http
+POST /users
+Content-Type: application/json
+```
+
+```json
+{
+   "name": "Sunil",
+   "age":
+}
+```
+
+### Controller example
+
+```java
+@PostMapping("/users")
+public ResponseEntity<String> createUser(
+        @RequestBody User user) {
+
+    return ResponseEntity.ok("User created");
+}
+```
+
+Invalid JSON normally causes Spring's message conversion exception and Spring returns **400**.
+
+You can explicitly return it:
+
+```java
+@PostMapping("/users")
+public ResponseEntity<String> createUser(
+        @RequestBody User user) {
+
+    if (user.getName() == null) {
+        return ResponseEntity
+                .badRequest()
+                .body("Name is required");
+    }
+
+    return ResponseEntity.ok("User created");
+}
+```
+
+### Meaning
+
+```text
+Client → Invalid request → Server → 400
+```
+
+---
+
+# 2. 401 — Unauthorized
+
+### Real-time scenario
+
+User calls:
+
+```http
+GET /api/admin/users
+```
+
+without a JWT token.
+
+### Controller example
+
+```java
+@GetMapping("/admin/users")
+public ResponseEntity<String> users(
+        @RequestHeader(value = "Authorization",
+                       required = false) String auth) {
+
+    if (auth == null) {
+
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body("Authentication required");
+    }
+
+    return ResponseEntity.ok("Users");
+}
+```
+
+Response:
+
+```http
+401 Unauthorized
+```
+
+### Meaning
+
+> **"I don't know who you are / your authentication is invalid."**
+
+---
+
+# 3. 402 — Payment Required
+
+`402` is reserved and not commonly used for a standardized payment flow, but some APIs use it for subscription/payment requirements.
+
+```java
+@GetMapping("/premium-report")
+public ResponseEntity<String> report() {
+
+    boolean paid = false;
+
+    if (!paid) {
+
+        return ResponseEntity
+                .status(HttpStatus.PAYMENT_REQUIRED)
+                .body("Premium subscription required");
+    }
+
+    return ResponseEntity.ok("Premium report");
+}
+```
+
+Response:
+
+```http
+402 Payment Required
+```
+
+---
+
+# 4. 403 — Forbidden
+
+### Real-time scenario
+
+User is authenticated:
+
+```text
+JWT valid ✅
+```
+
+but doesn't have ADMIN permission.
+
+```text
+User → /admin/users
+             ↓
+        Authentication ✅
+        Authorization ❌
+             ↓
+           403
+```
+
+### Controller
+
+```java
+@GetMapping("/admin/users")
+public ResponseEntity<String> adminUsers(
+        @RequestHeader("X-Role") String role) {
+
+    if (!"ADMIN".equals(role)) {
+
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body("You are not allowed to access this resource");
+    }
+
+    return ResponseEntity.ok("Admin users");
+}
+```
+
+### Remember
+
+```text
+401 → Who are you?
+403 → I know who you are, but you can't access this.
+```
+
+---
+
+# 5. 404 — Not Found
+
+### Real-time scenario
+
+```http
+GET /users/999
+```
+
+but user `999` doesn't exist.
+
+```java
+@GetMapping("/users/{id}")
+public ResponseEntity<User> getUser(
+        @PathVariable Long id) {
+
+    User user = userService.findById(id);
+
+    if (user == null) {
+
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .build();
+    }
+
+    return ResponseEntity.ok(user);
+}
+```
+
+Response:
+
+```http
+404 Not Found
+```
+
+---
+
+# 6. 405 — Method Not Allowed
+
+Suppose you only have:
+
+```java
+@GetMapping("/users")
+public List<User> users() {
+    return userService.getUsers();
+}
+```
+
+Client sends:
+
+```http
+POST /users
+```
+
+The URL exists, but `POST` isn't supported.
+
+Spring can return:
+
+```http
+405 Method Not Allowed
+```
+
+### Meaning
+
+```text
+URL exists ✅
+HTTP method wrong ❌
+```
+
+---
+
+# 7. 406 — Not Acceptable
+
+Client says:
+
+```http
+GET /users
+Accept: application/xml
+```
+
+but your API can only produce JSON.
+
+You can explicitly handle this:
+
+```java
+@GetMapping("/users")
+public ResponseEntity<String> users(
+        @RequestHeader("Accept") String accept) {
+
+    if (accept.contains("application/xml")) {
+
+        return ResponseEntity
+                .status(HttpStatus.NOT_ACCEPTABLE)
+                .body("XML representation is not supported");
+    }
+
+    return ResponseEntity.ok("JSON users");
+}
+```
+
+Response:
+
+```http
+406 Not Acceptable
+```
+
+---
+
+# 7. 407 — Proxy Authentication Required
+
+This is different from `401`.
+
+```text
+401 → Server requires authentication
+407 → Proxy requires authentication
+```
+
+Example:
+
+```text
+Client
+   ↓
+Corporate Proxy
+   ↓
+Server
+```
+
+Proxy responds:
+
+```http
+407 Proxy Authentication Required
+Proxy-Authenticate: Basic
+```
+
+This is normally generated by the **proxy**, not your Spring Boot controller.
+
+---
+
+# 8. 408 — Request Timeout
+
+Meaning:
+
+> Server waited too long for the client to complete the request.
+
+Example:
+
+```text
+Client starts uploading
+        ↓
+Client stops sending data
+        ↓
+Server waits
+        ↓
+Timeout
+        ↓
+408 Request Timeout
+```
+
+This is usually handled by the web server/reverse proxy rather than a normal controller method.
+
+---
+
+# 9. 409 — Conflict
+
+### Real-time scenario
+
+User tries to register an email that already exists.
+
+```java
+@PostMapping("/users")
+public ResponseEntity<String> createUser(
+        @RequestBody User user) {
+
+    if (userService.emailExists(user.getEmail())) {
+
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body("Email already exists");
+    }
+
+    userService.save(user);
+
+    return ResponseEntity.ok("User created");
+}
+```
+
+Response:
+
+```http
+409 Conflict
+```
+
+### Meaning
+
+> **Request is valid, but conflicts with the current state of the resource.**
+
+---
+
+# 10. 410 — Gone
+
+### Scenario
+
+An API/resource was permanently removed.
+
+```java
+@GetMapping("/old-report")
+public ResponseEntity<String> oldReport() {
+
+    return ResponseEntity
+            .status(HttpStatus.GONE)
+            .body("This report has been permanently removed");
+}
+```
+
+Response:
+
+```http
+410 Gone
+```
+
+Difference:
+
+```text
+404 → Resource not found
+410 → Resource was intentionally/permanently removed
+```
+
+---
+
+# 11. 411 — Length Required
+
+Server requires a `Content-Length` header.
+
+```text
+Request
+   ↓
+Missing Content-Length
+   ↓
+411 Length Required
+```
+
+This is generally handled by the HTTP server/container rather than your controller.
+
+---
+
+# 12. 412 — Precondition Failed
+
+Very useful with **ETag / optimistic concurrency**.
+
+Suppose:
+
+```text
+User version = 5
+```
+
+Client tries to update using:
+
+```http
+If-Match: "version-4"
+```
+
+Server checks:
+
+```text
+Expected: version-5
+Received: version-4
+```
+
+Therefore:
+
+```http
+412 Precondition Failed
+```
+
+Controller example:
+
+```java
+@PutMapping("/users/{id}")
+public ResponseEntity<String> updateUser(
+        @PathVariable Long id,
+        @RequestHeader("If-Match") String etag) {
+
+    String currentEtag = "\"version-5\"";
+
+    if (!currentEtag.equals(etag)) {
+
+        return ResponseEntity
+                .status(HttpStatus.PRECONDITION_FAILED)
+                .body("User was modified by another request");
+    }
+
+    return ResponseEntity.ok("User updated");
+}
+```
+
+---
+
+# 13. 413 — Content Too Large
+
+### Scenario
+
+API accepts maximum 10 MB:
+
+```text
+Client → 100 MB file
+             ↓
+          Too large
+             ↓
+            413
+```
+
+Controller/filter-level example:
+
+```java
+@PostMapping("/upload")
+public ResponseEntity<String> upload(
+        @RequestBody byte[] file) {
+
+    if (file.length > 10 * 1024 * 1024) {
+
+        return ResponseEntity
+                .status(HttpStatus.CONTENT_TOO_LARGE)
+                .body("File size cannot exceed 10 MB");
+    }
+
+    return ResponseEntity.ok("Uploaded");
+}
+```
+
+In production, configure the upload limit at Spring Boot/server level too.
+
+---
+
+# 14. 414 — URI Too Long
+
+Example:
+
+```http
+GET /search?keyword=very-long-value.......
+```
+
+The URL becomes excessively long.
+
+Server/proxy may return:
+
+```http
+414 URI Too Long
+```
+
+Better approach:
+
+```text
+GET /search?keyword=...
+```
+
+or for large search criteria:
+
+```text
+POST /search
+```
+
+with JSON body.
+
+---
+
+# 15. 415 — Unsupported Media Type
+
+### Scenario
+
+Your API expects JSON:
+
+```http
+Content-Type: application/json
+```
+
+but client sends:
+
+```http
+Content-Type: application/xml
+```
+
+Controller:
+
+```java
+@PostMapping(
+    value = "/users",
+    consumes = "application/json"
+)
+public ResponseEntity<String> createUser(
+        @RequestBody User user) {
+
+    return ResponseEntity.ok("Created");
+}
+```
+
+Client sends XML:
+
+```http
+Content-Type: application/xml
+```
+
+Spring can return:
+
+```http
+415 Unsupported Media Type
+```
+
+---
+
+# 16. 416 — Range Not Satisfiable
+
+Used especially for **file/video downloads**.
+
+Suppose file size is:
+
+```text
+1000 bytes
+```
+
+Client requests:
+
+```http
+Range: bytes=5000-6000
+```
+
+Those bytes don't exist.
+
+Server returns:
+
+```http
+416 Range Not Satisfiable
+```
+
+Real-time example:
+
+```text
+Video player
+    ↓
+Request bytes 5,000–6,000
+    ↓
+Video only has 1,000 bytes
+    ↓
+416
+```
+
+---
+
+# 17. 417 — Expectation Failed
+
+Client sends:
+
+```http
+Expect: some-expectation
+```
+
+but server cannot satisfy it.
+
+Response:
+
+```http
+417 Expectation Failed
+```
+
+This is uncommon in normal Spring Boot REST applications.
+
+---
+
+# 18. 418 — I'm a Teapot
+
+This is an April Fools' HTTP status code from the HTTP specification history.
+
+Example:
+
+```java
+@GetMapping("/coffee")
+public ResponseEntity<String> coffee() {
+
+    return ResponseEntity
+            .status(418)
+            .body("I'm a teapot");
+}
+```
+
+Response:
+
+```http
+418 I'm a teapot
+```
+
+😂 **Not a normal business REST API error.**
+
+---
+
+# 19. 421 — Misdirected Request
+
+The request reached a server that cannot produce a response for the requested scheme/authority.
+
+It's mainly relevant to HTTP/2 connection/routing scenarios.
+
+```text
+Client
+   ↓
+Wrong HTTP/2 server
+   ↓
+421 Misdirected Request
+```
+
+Not normally something you explicitly return from a Spring controller.
+
+---
+
+# 20. 422 — Unprocessable Content
+
+Very useful for **validation/business validation**.
+
+The JSON is syntactically valid:
+
+```json
+{
+    "email": "abc",
+    "age": -10
+}
+```
+
+But the values are invalid.
+
+```java
+@PostMapping("/users")
+public ResponseEntity<String> createUser(
+        @RequestBody User user) {
+
+    if (user.getAge() < 0) {
+
+        return ResponseEntity
+                .status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body("Age cannot be negative");
+    }
+
+    return ResponseEntity.ok("User created");
+}
+```
+
+Response:
+
+```http
+422 Unprocessable Content
+```
+
+### 400 vs 422
+
+```text
+400 → Request itself is malformed/invalid
+422 → Request format is valid, but business data is invalid
+```
+
+---
+
+# 21. 423 — Locked
+
+Suppose a document is currently locked.
+
+```java
+@PutMapping("/documents/{id}")
+public ResponseEntity<String> updateDocument(
+        @PathVariable Long id) {
+
+    boolean locked = true;
+
+    if (locked) {
+
+        return ResponseEntity
+                .status(HttpStatus.LOCKED)
+                .body("Document is currently locked");
+    }
+
+    return ResponseEntity.ok("Document updated");
+}
+```
+
+Response:
+
+```http
+423 Locked
+```
+
+---
+
+# 22. 424 — Failed Dependency
+
+Suppose:
+
+```text
+Order
+ ↓
+Payment
+ ↓
+Inventory
+```
+
+Payment fails, so an operation dependent on it cannot proceed.
+
+Conceptually:
+
+```java
+@PostMapping("/order")
+public ResponseEntity<String> createOrder() {
+
+    boolean paymentSuccessful = false;
+
+    if (!paymentSuccessful) {
+
+        return ResponseEntity
+                .status(HttpStatus.FAILED_DEPENDENCY)
+                .body("Order cannot proceed because payment failed");
+    }
+
+    return ResponseEntity.ok("Order created");
+}
+```
+
+Response:
+
+```http
+424 Failed Dependency
+```
+
+---
+
+# 23. 425 — Too Early
+
+This is associated with early data / replay risks, particularly TLS 1.3 0-RTT.
+
+It's not something you'll commonly implement in a normal controller.
+
+```http
+425 Too Early
+```
+
+Meaning roughly:
+
+> Server is unwilling to process the request yet because replay could be a concern.
+
+---
+
+# 24. 426 — Upgrade Required
+
+Server tells client:
+
+> "You need to upgrade/change the protocol."
+
+Example:
+
+```java
+@GetMapping("/secure")
+public ResponseEntity<String> secure() {
+
+    return ResponseEntity
+            .status(HttpStatus.UPGRADE_REQUIRED)
+            .header("Upgrade", "TLS/1.3")
+            .body("Please upgrade your connection");
+}
+```
+
+Response:
+
+```http
+426 Upgrade Required
+Upgrade: TLS/1.3
+```
+
+---
+
+# 25. 428 — Precondition Required
+
+Very useful for preventing accidental overwrites.
+
+Example:
+
+```java
+@PutMapping("/users/{id}")
+public ResponseEntity<String> updateUser(
+        @PathVariable Long id,
+        @RequestHeader(value = "If-Match",
+                       required = false) String ifMatch) {
+
+    if (ifMatch == null) {
+
+        return ResponseEntity
+                .status(HttpStatus.PRECONDITION_REQUIRED)
+                .body("If-Match header is required");
+    }
+
+    return ResponseEntity.ok("User updated");
+}
+```
+
+Response:
+
+```http
+428 Precondition Required
+```
+
+Meaning:
+
+> **"Before updating this resource, you must provide the required condition."**
+
+---
+
+# 26. 429 — Too Many Requests
+
+This is extremely common in production APIs.
+
+### Scenario
+
+API allows:
+
+```text
+100 requests/minute
+```
+
+Client sends:
+
+```text
+101 requests
+```
+
+Server responds:
+
+```http
+429 Too Many Requests
+Retry-After: 60
+```
+
+### Controller example
+
+```java
+@GetMapping("/users")
+public ResponseEntity<String> users() {
+
+    boolean rateLimitExceeded = true;
+
+    if (rateLimitExceeded) {
+
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", "60")
+                .body("Too many requests. Try again later.");
+    }
+
+    return ResponseEntity.ok("Users");
+}
+```
+
+Flow:
+
+```text
+Client
+   |
+   | 100 requests
+   ↓
+API
+   |
+   | 101st request
+   ↓
+429 Too Many Requests
+   |
+   | Retry-After: 60
+   ↓
+Client waits
+```
+
+---
+
+# 27. 431 — Request Header Fields Too Large
+
+Example:
+
+```text
+Client
+   |
+   | Huge JWT
+   | Huge Cookie
+   | Huge Headers
+   ↓
+Server
+   |
+   ↓
+431 Request Header Fields Too Large
+```
+
+Usually handled by the server/proxy rather than a controller.
+
+---
+
+# 28. 451 — Unavailable For Legal Reasons
+
+Example:
+
+```java
+@GetMapping("/restricted-content")
+public ResponseEntity<String> content() {
+
+    return ResponseEntity
+            .status(451)
+            .body("Content unavailable due to legal restrictions");
+}
+```
+
+Response:
+
+```http
+451 Unavailable For Legal Reasons
+```
+
+Real-world concept:
+
+```text
+Client
+   ↓
+Content request
+   ↓
+Legal restriction
+   ↓
+451
+```
+
+---
+
+# Most Important 4XX Codes for Spring Boot REST
+
+For your **real-time REST API development/interviews**, concentrate especially on these:
+
+| Code          | Real-Time Usage                           |
+| ------------- | ----------------------------------------- |
+| **400**       | Invalid request                           |
+| **401**       | JWT/authentication failure                |
+| **403**       | Authorization/role failure                |
+| **404**       | Resource doesn't exist                    |
+| **405**       | Wrong HTTP method                         |
+| **409**       | Duplicate/conflicting resource            |
+| **415**       | Wrong `Content-Type`                      |
+| **422**       | Validation/business validation failure    |
+| **429**       | Rate limiting                             |
+| **412 / 428** | ETag / optimistic locking / preconditions |
+
+## Very Important 401 vs 403 vs 404
+
+```text
+401
+ ↓
+"Who are you?"
+Authentication problem
+```
+
+```text
+403
+ ↓
+"I know who you are,
+but you are not allowed."
+Authorization problem
+```
+
+```text
+404
+ ↓
+"I can't find that resource."
+```
+
+## And 400 vs 422
+
+```text
+400
+ ↓
+Request itself is bad/malformed
+```
+
+```text
+422
+ ↓
+Request format is valid
+BUT
+business data is invalid
+```
+
+## 4XX Easy Memory
+
+```text
+400 → Bad Request
+401 → Authentication problem
+402 → Payment Required
+403 → Authorization problem
+404 → Resource not found
+405 → Wrong HTTP method
+406 → Representation not acceptable
+407 → Proxy authentication
+408 → Request timeout
+409 → Conflict
+410 → Permanently gone
+411 → Content length required
+412 → Precondition failed
+413 → Request too large
+414 → URL too long
+415 → Wrong content type
+416 → Invalid range
+417 → Expectation failed
+418 → Teapot
+421 → Wrong server
+422 → Validation/business data invalid
+423 → Resource locked
+424 → Dependency failed
+425 → Too early
+426 → Upgrade required
+428 → Precondition required
+429 → Too many requests
+431 → Headers too large
+451 → Legal restriction
+```
+
+**Note:** Several of these (`407`, `408`, `411`, `414`, `416`, `417`, `421`, `425`, `431`, etc.) are normally generated/handled by the **HTTP server, reverse proxy, gateway, or web infrastructure**, rather than being explicitly returned from a Spring `@RestController`.

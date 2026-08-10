@@ -1,0 +1,89 @@
+If you mean **“what does an API Gateway filter?”**, think of an API Gateway as a **security and traffic checkpoint** between the client and your microservices.
+
+```text
+Client
+   ↓
+API Gateway
+   ↓
+ ┌──────────────────────┐
+ │ Gateway Filters      │
+ │                      │
+ │ Authentication       │
+ │ Authorization         │
+ │ Rate Limiting        │
+ │ Headers              │
+ │ Logging              │
+ │ CORS                 │
+ │ Request/Response     │
+ │ Transformation       │
+ └──────────────────────┘
+   ↓
+Microservice
+```
+
+### Common API Gateway filters
+
+| Filter              | What it checks/does                    | Example                    |
+| ------------------- | -------------------------------------- | -------------------------- |
+| **Authentication**  | Checks whether user is logged in       | JWT token                  |
+| **Authorization**   | Checks what user is allowed to access  | `ADMIN` can delete         |
+| **Rate Limiting**   | Limits number of requests              | 100 requests/minute        |
+| **Header Filter**   | Adds/removes/modifies headers          | Add `X-Request-ID`         |
+| **Logging Filter**  | Records request/response information   | Log API calls              |
+| **CORS Filter**     | Controls browser cross-origin requests | Allow frontend domain      |
+| **Request Filter**  | Validates/modifies incoming request    | Validate headers           |
+| **Response Filter** | Modifies outgoing response             | Add/remove headers         |
+| **Routing Filter**  | Sends request to correct service       | `/users` → User Service    |
+| **Retry Filter**    | Retries failed downstream calls        | Retry on temporary failure |
+| **Circuit Breaker** | Stops calls to unhealthy service       | Prevent cascading failure  |
+
+### Simple real-time example
+
+Client sends:
+
+```http
+GET /users/101
+Authorization: Bearer eyJ...
+```
+
+Gateway:
+
+```text
+1. Authentication filter
+       ↓
+   JWT valid? ✅
+
+2. Authorization filter
+       ↓
+   User allowed? ✅
+
+3. Rate-limit filter
+       ↓
+   Under limit? ✅
+
+4. Routing filter
+       ↓
+   Send to User Service
+
+5. Response filter
+       ↓
+   Modify/add headers if required
+
+6. Client receives response
+```
+
+So when we discussed **203**, an important point is:
+
+```text
+Spring Boot
+   ↓
+Original response
+   ↓
+API Gateway response filter
+   ↓
+Gateway modifies response
+   ↓
+Client
+```
+
+A gateway **response filter can modify headers or the response representation**, although **203 is not automatically produced just because a gateway modifies something**. It is a specific HTTP status with a defined meaning.

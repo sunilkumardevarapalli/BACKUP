@@ -1,0 +1,757 @@
+Absolutely. **5XX HTTP status codes** mean:
+
+> **The request may be valid, but the server failed while trying to fulfill it.**
+
+For Spring Boot REST APIs, the most important ones are **500, 501, 502, 503, 504**, while some others are handled mainly by gateways/proxies or infrastructure.
+
+
+401 → Application/server authentication required
+
+511 → Network authentication required
+
+
+## 5XX HTTP Status Codes — Telugu
+
+| **Code** | **పేరు**                        | **సింపుల్ అర్థం**                                              | **Real-Time Scenario**                                             |
+| -------- | ------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **500**  | Internal Server Error           | Serverలో **అనుకోని error వచ్చింది**                            | Spring Bootలో unhandled exception రావడం                            |
+| **501**  | Not Implemented                 | Serverకి అడిగిన functionality **ఇంకా implement చేయలేదు**       | API feature ఇంకా developmentలో ఉండటం                               |
+| **502**  | Bad Gateway                     | Gateway/Proxyకి backend service నుంచి **సరైన response రాలేదు** | API Gateway → User Service communication failure                   |
+| **503**  | Service Unavailable             | Server ప్రస్తుతం requestని **handle చేయలేకపోతోంది**            | Service down / overloaded / maintenance                            |
+| **504**  | Gateway Timeout                 | Gatewayకి backend service నుంచి **సమయానికి response రాలేదు**   | API Gateway → Payment Service response కోసం ఎక్కువ సమయం వేచి ఉండటం |
+| **505**  | HTTP Version Not Supported      | Serverకి client ఉపయోగించిన **HTTP version support లేదు**       | Client unsupported HTTP versionతో request పంపడం                    |
+| **506**  | Variant Also Negotiates         | Serverలో **content negotiation configuration problem** ఉంది    | Misconfigured server variant negotiation                           |
+| **507**  | Insufficient Storage            | Serverలో request పూర్తి చేయడానికి **తగిన storage లేదు**        | Server disk/storage full అవ్వడం                                    |
+| **508**  | Loop Detected                   | Server **infinite processing loop**ని గుర్తించింది             | Service A → B → C → A → B → C                                      |
+| **510**  | Not Extended                    | Requestకి అవసరమైన **extension server support చేయడం లేదు**      | Server required extensionని support చేయకపోవడం                      |
+| **511**  | Network Authentication Required | Client ముందుగా **network authentication** చేయాలి               | Public/Captive Wi-Fi login అవసరం అవ్వడం                            |
+
+### ముఖ్యమైన 5XX codes సింపుల్‌గా
+
+| **Code** | **గుర్తుపెట్టుకోవడానికి**                             |
+| -------- | ----------------------------------------------------- |
+| **500**  | నా applicationలో error వచ్చింది                       |
+| **501**  | ఈ functionality నేను implement చేయలేదు                |
+| **502**  | Backend నుంచి Gatewayకి సరైన response రాలేదు          |
+| **503**  | Service ప్రస్తుతం available కాదు                      |
+| **504**  | Backend response కోసం Gateway ఎక్కువసేపు wait చేసింది |
+| **505**  | HTTP version support లేదు                             |
+| **506**  | Content negotiation problem                           |
+| **507**  | Storage సరిపోలేదు                                     |
+| **508**  | Processing loop వచ్చింది                              |
+| **510**  | Required extension support లేదు                       |
+| **511**  | Network authentication అవసరం                          |
+
+
+# 5XX HTTP Status Codes
+
+| Code    | Name                            | Simple Meaning                                          | Real-Time Scenario                               |
+| ------- | ------------------------------- | ------------------------------------------------------- | ------------------------------------------------ |
+| **500** | Internal Server Error           | Server encountered an unexpected error                  | Unhandled exception in Spring Boot               |
+| **501** | Not Implemented                 | Server doesn't support the requested functionality      | API feature not implemented                      |
+| **502** | Bad Gateway                     | Gateway/proxy received an invalid response from backend | API Gateway → User Service failed                |
+| **503** | Service Unavailable             | Server temporarily cannot handle request                | Service down/overloaded/maintenance              |
+| **504** | Gateway Timeout                 | Gateway didn't receive backend response in time         | API Gateway waiting too long for Payment Service |
+| **505** | HTTP Version Not Supported      | Server doesn't support requested HTTP version           | Client requests unsupported HTTP version         |
+| **506** | Variant Also Negotiates         | Content negotiation configuration problem               | Misconfigured server variant negotiation         |
+| **507** | Insufficient Storage            | Server doesn't have enough storage                      | WebDAV/server storage exhausted                  |
+| **508** | Loop Detected                   | Server detected an infinite processing loop             | Service A → B → C → A                            |
+| **510** | Not Extended                    | Request requires extensions not supported               | Server requires an unsupported extension         |
+| **511** | Network Authentication Required | Client must authenticate with network first             | Captive Wi-Fi portal                             |
+
+---
+
+# 1. 500 — Internal Server Error
+
+This is the **most common 5XX error** in Spring Boot.
+
+### Real-time scenario
+
+Suppose your service has:
+
+```java
+@GetMapping("/users/{id}")
+public User getUser(@PathVariable Long id) {
+
+    User user = userService.findById(id);
+
+    return user;
+}
+```
+
+Suppose:
+
+```java
+userService.findById(id)
+```
+
+throws an unexpected exception:
+
+```text
+NullPointerException
+Database exception
+Unexpected RuntimeException
+```
+
+Spring Boot can return:
+
+```http
+HTTP/1.1 500 Internal Server Error
+```
+
+### Simple flow
+
+```text
+Client
+   |
+   | GET /users/101
+   ↓
+Spring Boot
+   |
+   | Exception occurs
+   ↓
+500 Internal Server Error
+   ↓
+Client
+```
+
+### Explicit example
+
+```java
+@GetMapping("/test-500")
+public ResponseEntity<String> test500() {
+
+    throw new RuntimeException("Database processing failed");
+}
+```
+
+The unhandled exception results in:
+
+```http
+500 Internal Server Error
+```
+
+### Meaning
+
+> **"The server encountered an unexpected problem."**
+
+---
+
+# 2. 501 — Not Implemented
+
+### Meaning
+
+> **"I understand your request, but this functionality is not implemented by this server."**
+
+### Real-time scenario
+
+Suppose you planned to support:
+
+```text
+POST /payments/refund
+```
+
+but the refund feature hasn't been implemented yet.
+
+```java
+@PostMapping("/payments/refund")
+public ResponseEntity<String> refund() {
+
+    return ResponseEntity
+            .status(HttpStatus.NOT_IMPLEMENTED)
+            .body("Refund functionality is not implemented");
+}
+```
+
+Response:
+
+```http
+501 Not Implemented
+```
+
+Flow:
+
+```text
+Client
+   |
+   | POST /payments/refund
+   ↓
+Server
+   |
+   | Feature not implemented
+   ↓
+501
+```
+
+### 500 vs 501
+
+```text
+500 → Feature exists, but something went wrong
+
+501 → Feature itself is not implemented
+```
+
+---
+
+# 3. 502 — Bad Gateway
+
+This is extremely important in **microservices**.
+
+### Architecture
+
+```text
+Client
+   |
+   ↓
+API Gateway
+   |
+   ↓
+User Service
+```
+
+Suppose User Service is down or returns an invalid/unexpected response.
+
+```text
+Client
+   |
+   | GET /api/users
+   ↓
+API Gateway
+   |
+   | GET /users
+   ↓
+User Service
+   |
+   X
+   | Invalid response / connection failure
+   ↓
+API Gateway
+   |
+   ↓
+502 Bad Gateway
+   ↓
+Client
+```
+
+### Gateway-style example
+
+Imagine a gateway controller:
+
+```java
+@GetMapping("/gateway/users")
+public ResponseEntity<String> users() {
+
+    try {
+
+        String response = restClient
+                .get()
+                .uri("http://localhost:8081/users")
+                .retrieve()
+                .body(String.class);
+
+        return ResponseEntity.ok(response);
+
+    } catch (Exception e) {
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_GATEWAY)
+                .body("User service returned an invalid response");
+    }
+}
+```
+
+Response:
+
+```http
+502 Bad Gateway
+```
+
+### Meaning
+
+> **"I am a gateway/proxy. I tried to communicate with another server, but I got a bad response."**
+
+---
+
+# 4. 503 — Service Unavailable
+
+### Real-time scenarios
+
+A service may be:
+
+* Down
+* Starting
+* Under maintenance
+* Overloaded
+* Temporarily unable to process requests
+
+Example:
+
+```text
+Client
+   |
+   | GET /orders
+   ↓
+Order Service
+   |
+   | Service overloaded
+   ↓
+503 Service Unavailable
+```
+
+### Controller example
+
+```java
+@GetMapping("/orders")
+public ResponseEntity<String> orders() {
+
+    boolean serviceAvailable = false;
+
+    if (!serviceAvailable) {
+
+        return ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header("Retry-After", "60")
+                .body("Order service is temporarily unavailable");
+    }
+
+    return ResponseEntity.ok("Orders");
+}
+```
+
+Response:
+
+```http
+503 Service Unavailable
+Retry-After: 60
+```
+
+### Meaning
+
+> **"The service is temporarily unable to handle your request. Try again later."**
+
+### 502 vs 503
+
+```text
+502 → Gateway got a bad response from another server
+
+503 → Service itself is currently unavailable
+```
+
+---
+
+# 5. 504 — Gateway Timeout
+
+This is very important in **microservices**.
+
+### Real-time scenario
+
+```text
+Client
+   |
+   | GET /orders
+   ↓
+API Gateway
+   |
+   | GET /payment
+   ↓
+Payment Service
+   |
+   | Taking too long...
+   |
+   X
+   |
+API Gateway timeout
+   ↓
+504 Gateway Timeout
+   ↓
+Client
+```
+
+For example:
+
+```text
+Gateway timeout = 5 seconds
+
+Payment Service response = 15 seconds
+```
+
+Gateway waits 5 seconds and gives up.
+
+### Controller-style example
+
+```java
+@GetMapping("/gateway/payment")
+public ResponseEntity<String> payment() {
+
+    try {
+
+        String response = restClient
+                .get()
+                .uri("http://localhost:8082/payment")
+                .retrieve()
+                .body(String.class);
+
+        return ResponseEntity.ok(response);
+
+    } catch (Exception e) {
+
+        return ResponseEntity
+                .status(HttpStatus.GATEWAY_TIMEOUT)
+                .body("Payment service timed out");
+    }
+}
+```
+
+Response:
+
+```http
+504 Gateway Timeout
+```
+
+### Meaning
+
+> **"I am a gateway. I waited for the backend service, but it didn't respond within the allowed time."**
+
+---
+
+# 6. 505 — HTTP Version Not Supported
+
+### Meaning
+
+The server does not support the HTTP version used in the request.
+
+For example:
+
+```http
+GET /users HTTP/1.0
+```
+
+while the server only supports a required newer version/configuration.
+
+Response:
+
+```http
+505 HTTP Version Not Supported
+```
+
+This is normally handled by the **web server/container**, not your Spring controller.
+
+---
+
+# 7. 506 — Variant Also Negotiates
+
+This is related to **content negotiation** and server configuration.
+
+It can occur when the server's configuration creates a circular or invalid negotiation situation.
+
+Example concept:
+
+```text
+Client
+   |
+   | Accept: application/json
+   ↓
+Server
+   |
+   | Variant A points to Variant B
+   | Variant B points back to Variant A
+   ↓
+506 Variant Also Negotiates
+```
+
+This is **rare in normal Spring Boot REST APIs** and generally comes from server configuration rather than a controller.
+
+---
+
+# 8. 507 — Insufficient Storage
+
+Meaning:
+
+> **Server does not have enough storage to complete the request.**
+
+Real-time scenario:
+
+```text
+Client
+   |
+   | Upload large file
+   ↓
+Server
+   |
+   | Disk full
+   ↓
+507 Insufficient Storage
+```
+
+For example, in a WebDAV-style system:
+
+```java
+@PutMapping("/files/{name}")
+public ResponseEntity<String> upload(
+        @PathVariable String name) {
+
+    boolean storageAvailable = false;
+
+    if (!storageAvailable) {
+
+        return ResponseEntity
+                .status(HttpStatus.INSUFFICIENT_STORAGE)
+                .body("Server storage is full");
+    }
+
+    return ResponseEntity.ok("File stored");
+}
+```
+
+---
+
+# 9. 508 — Loop Detected
+
+This one is especially useful for understanding **service-to-service loops**.
+
+### Real-time microservices scenario
+
+Suppose:
+
+```text
+Order Service
+     ↓
+Payment Service
+     ↓
+Inventory Service
+     ↓
+Order Service
+     ↓
+Payment Service
+     ↓
+...
+```
+
+You have an infinite processing loop.
+
+```text
+Service A
+   ↓
+Service B
+   ↓
+Service C
+   ↓
+Service A
+   ↓
+Service B
+   ↓
+Service C
+   ↓
+LOOP
+```
+
+Response:
+
+```http
+508 Loop Detected
+```
+
+### Controller example
+
+```java
+@GetMapping("/process")
+public ResponseEntity<String> process() {
+
+    boolean loopDetected = true;
+
+    if (loopDetected) {
+
+        return ResponseEntity
+                .status(HttpStatus.LOOP_DETECTED)
+                .body("Processing loop detected");
+    }
+
+    return ResponseEntity.ok("Processing completed");
+}
+```
+
+### Important
+
+`508` is primarily associated with WebDAV, so don't use it as a generic "microservice timeout" code.
+
+For microservice timeout:
+
+```text
+504 Gateway Timeout
+```
+
+is generally more appropriate.
+
+---
+
+# 10. 510 — Not Extended
+
+This is a rarely used status code.
+
+Meaning:
+
+> The server requires additional extensions to the request that aren't supported.
+
+Conceptually:
+
+```text
+Client
+   |
+   | Request without required extension
+   ↓
+Server
+   |
+   ↓
+510 Not Extended
+```
+
+It is not commonly used in modern Spring Boot REST APIs.
+
+---
+
+# 11. 511 — Network Authentication Required
+
+This is different from `401`.
+
+### Real-time example
+
+Imagine connecting to public Wi-Fi:
+
+```text
+Laptop
+   |
+   ↓
+Wi-Fi Network
+   |
+   | Login required
+   ↓
+511 Network Authentication Required
+```
+
+You must authenticate with the network before accessing the internet.
+
+Example:
+
+```http
+HTTP/1.1 511 Network Authentication Required
+```
+
+### 401 vs 511
+
+```text
+401 → Application/server authentication required
+
+511 → Network authentication required
+```
+
+---
+
+# Most Important 5XX Codes for Spring Boot
+
+For real-world Spring Boot + Microservices development, focus heavily on these:
+
+| Code    | Real-Time Meaning                                                 |
+| ------- | ----------------------------------------------------------------- |
+| **500** | Application/server unexpected exception                           |
+| **501** | Functionality not implemented                                     |
+| **502** | Gateway received bad response from backend                        |
+| **503** | Service temporarily unavailable                                   |
+| **504** | Gateway/backend timeout                                           |
+| **508** | Loop detected — mainly WebDAV, not a generic microservice timeout |
+
+---
+
+# 500 vs 502 vs 503 vs 504
+
+This is **very important for interviews and production troubleshooting**.
+
+### 500
+
+```text
+Client
+  ↓
+Order Service
+  ↓
+Exception
+  ↓
+500
+```
+
+**Problem inside the application.**
+
+---
+
+### 502
+
+```text
+Client
+  ↓
+API Gateway
+  ↓
+Order Service
+  ↓
+Bad/invalid backend response
+  ↓
+502
+```
+
+**Gateway received a bad response.**
+
+---
+
+### 503
+
+```text
+Client
+  ↓
+Order Service
+  ↓
+Service unavailable
+  ↓
+503
+```
+
+**Service cannot currently handle requests.**
+
+---
+
+### 504
+
+```text
+Client
+  ↓
+API Gateway
+  ↓
+Payment Service
+  ↓
+............. too long
+  ↓
+504
+```
+
+**Gateway waited too long for backend response.**
+
+---
+
+## Easy Memory Trick
+
+```text
+500 → My application failed
+501 → I don't implement this
+502 → My backend gave me a bad response
+503 → My service is unavailable
+504 → My backend didn't respond in time
+```
+
+And for the less-common codes:
+
+```text
+505 → HTTP version unsupported
+506 → Variant negotiation problem
+507 → Storage insufficient
+508 → Loop detected
+510 → Required extension unsupported
+511 → Network authentication required
+```
+
+**Production tip:** In a Spring Boot microservices architecture, don't blindly return `500` for every failure. Correctly distinguishing **500 / 502 / 503 / 504** helps API Gateway, monitoring, retry logic, circuit breakers, and operations teams understand **where the failure actually occurred**.

@@ -1,0 +1,45 @@
+Read/Write DataSource
+
+Very common architecture:
+
+             Application
+                 |
+        ┌────────┴────────┐
+        ↓                 ↓
+     WRITE              READ
+        ↓                 ↓
+ Primary DB          Replica DB
+
+Configuration:
+
+@Bean
+public DataSource writeDataSource() {
+    return DataSourceBuilder.create()
+            .url("jdbc:mysql://primary:3306/app")
+            .username("root")
+            .password("root")
+            .build();
+}
+@Bean
+public DataSource readDataSource() {
+    return DataSourceBuilder.create()
+            .url("jdbc:mysql://replica:3306/app")
+            .username("root")
+            .password("root")
+            .build();
+}
+
+Service:
+
+@Transactional
+public void createOrder(Order order) {
+
+    // Primary DB
+}
+@Transactional(readOnly = true)
+public List<Order> getOrders() {
+
+    // Replica DB
+}
+
+In a real implementation, AbstractRoutingDataSource is commonly used to route based on readOnly.

@@ -1,0 +1,246 @@
+
+3) Routing DataSource:
+
+	The special requirement is:
+
+	We don't want two separate JdbcTemplates. We want one JdbcTemplate that can dynamically choose the database.
+
+	That's where RoutingDataSource comes in.
+
+                    ONE JdbcTemplate
+                          |
+                          ↓
+                  RoutingDataSource
+                          |
+                 "Which DB?"
+                    ↙          ↘
+                  ORDER      CUSTOMER
+                    ↓            ↓
+                 Order DB     Customer DB
+				 
+The database is selected at runtime.
+
+That is the main idea.
+
+		package com.example.demo.config;
+
+		import org.springframework.jdbc.datasource.lookup.AbstractRoutingDataSource;
+
+		public class RoutingDataSource extends AbstractRoutingDataSource {
+
+			private static final ThreadLocal<String> DB =
+					new ThreadLocal<>();
+
+			public static void setDatabase(String database) {
+				DB.set(database);
+			}
+
+			public static void clear() {
+				DB.remove();
+			}
+
+			@Override
+			protected Object determineCurrentLookupKey() {
+				return DB.get();
+			}
+		}
+		
+	Ex: RoutingDataSource.setDatabase("CUSTOMER");
+	
+	Then:
+			
+		ThreadLocal
+			 |
+			 ↓
+		"CUSTOMER"
+			 |
+			 ↓
+		determineCurrentLookupKey()
+			 |
+			 ↓
+		"CUSTOMER"
+			 |
+			 ↓
+		customerDataSource
+			 |
+			 ↓
+		customerdb
+		
+---------------
+
+package com.example.demo.config;
+
+import javax.sql.DataSource;
+
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceBuilder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Configuration
+public class DataSourceConfig {
+
+    // =========================
+    // ORDER DATABASE
+    // =========================
+
+    @Bean
+    @ConfigurationProperties("app.datasource.order")
+    public DataSource orderDataSource() {
+
+        return DataSourceBuilder.create().build();
+    }
+
+
+    // =========================
+    // CUSTOMER DATABASE
+    // =========================
+
+    @Bean
+    @ConfigurationProperties("app.datasource.customer")
+    public DataSource customerDataSource() {
+
+        return DataSourceBuilder.create().build();
+    }
+
+
+    // =========================
+    // ROUTING DATABASE
+    // =========================
+
+    @Bean
+    public DataSource routingDataSource(
+            @Qualifier("orderDataSource")
+            DataSource order,
+
+            @Qualifier("customerDataSource")
+            DataSource customer) {
+
+        Map<Object, Object> targets =
+                new HashMap<>();
+
+        targets.put("ORDER", order);
+        targets.put("CUSTOMER", customer);
+
+        RoutingDataSource routing =
+                new RoutingDataSource();
+
+        routing.setTargetDataSources(targets);
+
+        // Default database
+        routing.setDefaultTargetDataSource(order);
+
+        routing.afterPropertiesSet();
+
+        return routing;
+    }
+
+
+    // =========================
+    // ONE JDBC TEMPLATE
+    // =========================
+
+    @Bean
+    public JdbcTemplate jdbcTemplate(
+            @Qualifier("routingDataSource")
+            DataSource routingDataSource) {
+
+        return new JdbcTemplate(routingDataSource);
+    }
+}		
+
+JdbcTemplate
+      ↓
+RoutingDataSource
+      ↓
+ ┌───────────────┐
+ │               │
+ORDER          CUSTOMER
+ DB               DB
+ 
+ package com.example.demo.repository;
+
+import com.example.demo.config.RoutingDataSource;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+import java.util.Map;
+
+@Repository
+public class CustomerRepository {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    public CustomerRepository(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    public Map<String, Object> findCustomer(Long id) {
+
+        RoutingDataSource.setDatabase("CUSTOMER");
+
+        try {
+
+            return jdbcTemplate.queryForMap(
+                    "SELECT * FROM customers WHERE id = ?",
+                    id
+            );
+
+        } finally {
+
+            RoutingDataSource.clear();
+        }
+    }
+}
+
+Request A                     Request B
+
+CUSTOMER                      ORDER
+   |                             |
+   ↓                             ↓
+Thread-1                      Thread-2
+   |                             |
+   ↓                             ↓
+"CUSTOMER"                    "ORDER"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
